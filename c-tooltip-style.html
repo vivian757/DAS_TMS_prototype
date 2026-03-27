@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>C 方案 - 貨品明細總覽 Tooltip 風格</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Noto Sans TC', sans-serif; background: #f5f5f5; color: #454749; }
+
+  /* === Layout === */
+  .page { display: flex; height: 100vh; overflow: hidden; }
+  .sidebar { width: 240px; background: #FFFFFF; border-right: 1px solid #E1E2E5; flex-shrink: 0; display: flex; flex-direction: column; }
+  .sidebar-logo { padding: 16px 20px; display: flex; align-items: center; gap: 8px; color: #191C1E; font-weight: 600; font-size: 16px; border-bottom: 1px solid #E1E2E5; }
+  .sidebar-user { padding: 12px 16px; border-bottom: 1px solid #E1E2E5; display: flex; align-items: center; gap: 8px; }
+  .sidebar-user-icon { width: 32px; height: 32px; border-radius: 50%; background: #F0F1F3; display: flex; align-items: center; justify-content: center; }
+  .sidebar-user-icon .material-icons-outlined { font-size: 20px; color: #5C5F61; }
+  .sidebar-user-info { flex: 1; }
+  .sidebar-user-name { font-size: 13px; font-weight: 600; color: #454749; }
+  .sidebar-user-id { font-size: 12px; color: #8F9193; }
+  .sidebar-user-arrow { color: #8F9193; }
+  .sidebar-nav { padding: 8px; flex: 1; }
+  .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; color: #454749; font-size: 14px; cursor: pointer; margin-bottom: 2px; }
+  .sidebar-item:hover { background: #F0F1F3; }
+  .sidebar-item.active { background: #27AAE1; color: white; }
+  .sidebar-item .material-icons-outlined { font-size: 20px; }
+  .sidebar-item .expand-icon { margin-left: auto; font-size: 18px; color: #8F9193; }
+  .sidebar-item.active .expand-icon { color: white; }
+  .sidebar-footer { padding: 12px 16px; border-top: 1px solid #E1E2E5; font-size: 11px; color: #AAABAE; }
+  .sidebar-footer a { color: #AAABAE; text-decoration: none; margin-right: 8px; }
+
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { height: 64px; background: white; border-bottom: 1px solid #E1E2E5; display: flex; align-items: center; padding: 0 24px; font-size: 14px; color: #5C5F61; }
+  .content-area { flex: 1; padding: 24px; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* === Page Header === */
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .page-title { font-size: 22px; font-weight: 700; color: #191C1E; }
+  .header-actions { display: flex; gap: 8px; }
+  .btn { padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid; display: flex; align-items: center; gap: 4px; }
+  .btn-outline { background: white; border-color: #27AAE1; color: #27AAE1; }
+  .btn-primary { background: #27AAE1; border-color: #27AAE1; color: white; }
+
+  /* === Stepper === */
+  .stepper { display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: 20px; padding: 12px 0; }
+  .step { display: flex; align-items: center; gap: 8px; }
+  .step-circle { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+  .step-circle.done { background: #27AAE1; color: white; }
+  .step-circle.active { background: #27AAE1; color: white; }
+  .step-circle.pending { background: #E1E2E5; color: #8F9193; }
+  .step-label { font-size: 13px; color: #5C5F61; }
+  .step-line { width: 80px; height: 2px; background: #27AAE1; margin: 0 8px; }
+  .step-line.pending { background: #E1E2E5; }
+
+  .hint-text { font-size: 13px; color: #8F9193; margin-bottom: 16px; }
+
+  /* === Dispatch Area === */
+  .dispatch-scroll-area { flex: 1; overflow-y: auto; position: relative; }
+
+  .dispatch-group { position: relative; margin-bottom: 24px; }
+
+  /* === Dispatch Card + Order List (Left) === */
+  .dispatch-left { position: relative; }
+
+  .dispatch-card-wrapper { display: flex; align-items: flex-start; gap: 0; }
+  .dispatch-checkbox-col { width: 48px; flex-shrink: 0; padding-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .dispatch-checkbox-col input[type="checkbox"] { width: 18px; height: 18px; accent-color: #27AAE1; cursor: pointer; }
+
+  .dispatch-card { background: white; border: 1px solid #E1E2E5; border-radius: 12px; overflow: hidden; position: relative; flex: 1; }
+  .dispatch-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; border-radius: 12px 0 0 12px; z-index: 1; }
+  .dispatch-card[data-color="blue"]::before { background: #C5C6C9; }
+  .dispatch-card[data-color="purple"]::before { background: #C5C6C9; }
+  .dispatch-card[data-color="green"]::before { background: #C5C6C9; }
+
+  .card-header { padding: 12px 16px 12px 20px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .card-title { font-size: 16px; font-weight: 600; color: #454749; }
+  .card-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
+  .card-stat { display: flex; align-items: center; gap: 2px; font-size: 13px; color: #8F9193; }
+  .card-stat .material-icons-outlined { font-size: 18px; }
+  .card-stat-value { color: #5C5F61; }
+  .card-stat-badge { background: #F0F1F3; color: #454749; font-size: 13px; padding: 0 8px; border-radius: 4px; display: inline-flex; gap: 4px; }
+  .card-chips { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .chip-driver { display: flex; align-items: center; gap: 4px; background: #EAF9FF; color: #208FBE; font-size: 14px; font-weight: 600; padding: 6px 16px; border-radius: 33px; }
+  .chip-driver .material-icons-outlined { font-size: 16px; }
+  .chip-date { background: #F0F1F3; color: #8F9193; font-size: 14px; padding: 6px 16px; border-radius: 33px; display: flex; align-items: center; gap: 4px; }
+  .chip-date .material-icons-outlined { font-size: 16px; }
+  .expand-btn { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 6px; color: #8F9193; }
+  .expand-btn:hover { background: #F0F1F3; }
+
+  /* Order List inside dispatch */
+  .order-list-section { border-top: 1px solid #E1E2E5; }
+  .order-list-toolbar { display: flex; justify-content: flex-end; padding: 4px 12px; gap: 4px; }
+  .order-list-toolbar .chip-assign { font-size: 12px; padding: 4px 12px; border-radius: 33px; background: #EAF9FF; color: #208FBE; font-weight: 600; cursor: pointer; border: none; }
+  /* Order list horizontal scroll */
+  .order-list-scroll { overflow-x: auto; }
+  .order-list-inner { min-width: 1200px; }
+
+  .order-header { display: flex; align-items: center; padding: 0 8px; height: 36px; background: #FAFAFA; border-bottom: 1px solid #E1E2E5; font-size: 13px; color: #8F9193; font-weight: 500; }
+  .order-header > span { flex-shrink: 0; }
+  .oh-fixed { width: 40px; }
+  .oh-num { width: 36px; text-align: center; }
+  .oh-status { width: 60px; }
+  .oh-id { width: 100px; }
+  .oh-addr { width: 200px; }
+  .oh-units { width: 60px; }
+  .oh-sms { width: 60px; }
+  .oh-name { width: 100px; }
+  .oh-phone { width: 160px; }
+  .oh-pickup { width: 120px; }
+  .oh-deliver { width: 120px; }
+  .oh-note { width: 60px; }
+  .oh-create { width: 100px; }
+
+  .order-row { display: flex; align-items: center; padding: 0 8px; height: 52px; border-bottom: 1px solid #F0F1F3; cursor: pointer; transition: background 0.15s; position: relative; }
+  .order-row:hover { background: #F8FCFF; }
+  .order-row.active { background: #EAF9FF; }
+  .order-row > span { flex-shrink: 0; font-size: 14px; color: #191C1E; }
+  .or-drag { width: 20px; display: flex; align-items: center; }
+  .or-drag .material-icons-outlined { font-size: 20px; color: #AAABAE; opacity: 0; }
+  .order-row:hover .or-drag .material-icons-outlined { opacity: 1; }
+  .or-check { width: 20px; }
+  .or-check input { width: 16px; height: 16px; accent-color: #27AAE1; }
+  .or-num { width: 36px; text-align: center; }
+  .or-status { width: 60px; }
+  .or-id { width: 100px; text-decoration: underline; cursor: pointer; }
+  .or-addr { width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .or-units { width: 60px; }
+  .or-sms { width: 60px; display: flex; align-items: center; gap: 4px; font-size: 13px; color: #454749; }
+  .or-sms .material-icons-outlined { font-size: 18px; color: #AAABAE; }
+  .or-name { width: 100px; }
+  .or-phone { width: 160px; }
+  .or-pickup { width: 120px; font-size: 13px; }
+  .or-deliver { width: 120px; font-size: 13px; }
+  .or-note { width: 60px; }
+  .or-create { width: 100px; font-size: 13px; }
+
+  /* === Drawer-style Product Overview === */
+  .tooltip-overlay {
+    position: fixed;
+    right: 0;
+    top: 64px;
+    bottom: 0;
+    width: 360px;
+    z-index: 15;
+    pointer-events: auto;
+    display: flex;
+    align-items: stretch;
+  }
+
+  .tooltip-panel {
+    background: white;
+    border-radius: 0;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.06);
+    border-left: 1px solid #E1E2E5;
+    position: relative;
+    overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Hide arrow elements */
+  .tooltip-arrow, .tooltip-arrow-border { display: none; }
+
+  .tooltip-header {
+    padding: 16px 16px 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #E1E2E5;
+    flex-shrink: 0;
+  }
+  .tooltip-title-area { display: flex; align-items: baseline; gap: 8px; }
+  .tooltip-title {
+    font-size: 14px; font-weight: 700; color: #454749;
+  }
+  .tooltip-subtitle { font-size: 13px; color: #8F9193; }
+  .tooltip-close { background: none; border: none; cursor: pointer; color: #AAABAE; padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+  .tooltip-close:hover { background: #F0F1F3; color: #5C5F61; }
+
+  .tooltip-body { flex: 1; overflow-y: auto; }
+
+  /* Each order's product section inside tooltip */
+  .tooltip-order-section {
+    border-bottom: 1px solid #F0F1F3;
+    transition: background 0.15s;
+  }
+  .tooltip-order-section:last-child { border-bottom: none; }
+  .tooltip-order-section.highlight {
+    background: #F8FCFF;
+  }
+
+  .tooltip-order-header {
+    display: flex; align-items: center; gap: 4px;
+    padding: 12px 16px;
+    cursor: pointer;
+    position: relative;
+    border-bottom: 1px solid #F0F1F3;
+    background: #FAFBFC;
+  }
+  .tooltip-order-section.highlight .tooltip-order-header {
+    background: #F0F8FF;
+  }
+  .tooltip-order-back { font-size: 18px; color: #8F9193; }
+  .tooltip-order-id { font-size: 13px; font-weight: 600; color: #454749; }
+  .tooltip-order-meta { font-size: 12px; color: #8F9193; display: flex; align-items: center; gap: 4px; }
+  .tooltip-order-meta .material-icons-outlined { font-size: 14px; }
+  .tooltip-unit-badge {
+    background: #EAF9FF; color: #208FBE;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 10px;
+  }
+
+  /* Product table inside tooltip */
+  .product-table { width: 100%; border-collapse: collapse; }
+  .product-table th {
+    text-align: left; font-size: 12px; color: #8F9193; font-weight: 500;
+    padding: 6px 8px 6px 16px; background: #FAFBFC;
+    border-bottom: 1px solid #F0F1F3;
+    position: sticky; top: 0;
+  }
+  .product-table td {
+    font-size: 12px; color: #5C5F61; padding: 8px 8px 8px 16px;
+    border-bottom: 1px solid #F8F9FA;
+  }
+  .product-table tr:last-child td { border-bottom: none; }
+  .product-name { color: #454749; font-weight: 500; }
+  .product-tag {
+    display: inline-block;
+    font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    background: #FFF3E0; color: #E65100; font-weight: 500;
+  }
+
+  /* Connector line from order row to tooltip section */
+  .connector-line {
+    display: none;
+    position: absolute;
+    right: -18px;
+    top: 50%;
+    width: 18px;
+    height: 2px;
+    background: #27AAE1;
+    z-index: 5;
+  }
+  .order-row.active .connector-line { display: block; }
+
+  /* === Second dispatch (collapsed) === */
+  .dispatch-collapsed .dispatch-card { opacity: 0.7; }
+  .dispatch-collapsed .order-list-section { display: none; }
+
+  /* === Fixed Bottom Action Bar === */
+  .bottom-action-bar {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    left: 240px;
+    height: 60px;
+    background: white;
+    border-top: 1px solid #E1E2E5;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 24px;
+    gap: 12px;
+    z-index: 20;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D0D0D0; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #B0B0B0; }
+
+  /* Responsive tooltip positioning hint */
+  .dispatch-group { min-height: 200px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <span class="material-icons-outlined" style="font-size:22px">menu</span>
+      <span style="font-weight:700">3drens</span><span style="font-weight:400;color:#8F9193">tms</span>
+    </div>
+    <div class="sidebar-user">
+      <div class="sidebar-user-icon"><span class="material-icons-outlined">person_outline</span></div>
+      <div class="sidebar-user-info">
+        <div class="sidebar-user-name">User Name</div>
+        <div class="sidebar-user-id">3drens 52796970</div>
+      </div>
+      <span class="sidebar-user-arrow material-icons-outlined" style="font-size:18px">expand_more</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-item active">
+        <span class="material-icons-outlined">description</span> 訂單管理
+      </div>
+      <div class="sidebar-item"><span class="material-icons-outlined">list_alt</span> 訂單報表</div>
+      <div class="sidebar-item"><span class="material-icons-outlined">inventory_2</span> 貨品報表</div>
+      <div class="sidebar-item"><span class="material-icons-outlined">assessment</span> 薪資報表</div>
+      <div class="sidebar-item"><span class="material-icons-outlined">qr_code_scanner</span> 掃碼更新</div>
+      <div class="sidebar-item"><span class="material-icons-outlined">people</span> 客戶管理</div>
+      <div class="sidebar-item"><span class="material-icons-outlined">directions_car</span> 司機管理 <span class="expand-icon material-icons-outlined">expand_more</span></div>
+      <div class="sidebar-item"><span class="material-icons-outlined">notifications</span> 通知中心</div>
+      <div class="sidebar-item"><span class="material-icons-outlined">receipt_long</span> 異動紀錄</div>
+      <div class="sidebar-item"><span class="material-icons-outlined">settings</span> 設定 <span class="expand-icon material-icons-outlined">expand_more</span></div>
+      <div class="sidebar-item"><span class="material-icons-outlined">admin_panel_settings</span> 系統權限管理 <span class="expand-icon material-icons-outlined">expand_more</span></div>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="#">使用條款</a><a href="#">隱私權政策</a><br>
+      <span style="margin-top:4px;display:inline-block">v_0_0_1_1</span>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+    <div class="topbar">訂單管理 \ 一鍵分類與優化</div>
+    <div class="content-area">
+      <!-- Page Header -->
+      <div class="page-header">
+        <div class="page-title">一鍵分類與優化</div>
+      </div>
+
+      <!-- Stepper -->
+      <div class="stepper">
+        <div class="step">
+          <div class="step-circle done">
+            <span class="material-icons-outlined" style="font-size:16px">check</span>
+          </div>
+          <span class="step-label">選取訂單: 500</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <div class="step-circle done">
+            <span class="material-icons-outlined" style="font-size:16px">check</span>
+          </div>
+          <span class="step-label">設定分類方式</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <div class="step-circle active">3</div>
+          <span class="step-label">預覽並建立</span>
+        </div>
+      </div>
+
+      <div class="hint-text">以下為自動分類後的結果，您可在建立前調整，並勾選欲建立的派車單。</div>
+
+      <!-- Dispatch scroll area -->
+      <div class="dispatch-scroll-area">
+
+        <!-- Dispatch Group 1 (expanded with tooltip) -->
+        <div class="dispatch-group" id="group1">
+          <div class="dispatch-card-wrapper">
+            <div class="dispatch-checkbox-col">
+              <input type="checkbox" checked>
+              <button class="expand-btn">
+                <span class="material-icons-outlined" style="font-size:20px">keyboard_arrow_up</span>
+              </button>
+            </div>
+            <div class="dispatch-card" data-color="blue">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">20240304_中區_1</div>
+                  <div class="card-stats">
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">place</span>
+                      結束的停靠點 <span class="card-stat-badge">2 / 8</span>
+                    </div>
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">date_range</span>
+                      派車單建立日期 <span class="card-stat-value">2024/05/06</span>
+                    </div>
+                  </div>
+                  <div class="card-stats" style="margin-top:4px;">
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">inventory_2</span>
+                      總單位數 <span class="card-stat-value">280</span>
+                    </div>
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">image_aspect_ratio</span>
+                      總材積 (cuft) <span class="card-stat-value">14</span>
+                    </div>
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">monitor_weight</span>
+                      總重量 (kg) <span class="card-stat-value">23</span>
+                    </div>
+                  </div>
+                  <div class="card-chips">
+                    <div class="chip-driver">
+                      <span class="material-icons-outlined">person</span> ...
+                    </div>
+                    <div class="chip-date">
+                      <span class="material-icons-outlined">date_range</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Order list -->
+              <div class="order-list-section">
+                <div class="order-list-toolbar">
+                  <span style="font-size:13px;color:#27AAE1;flex:1;padding:4px 0;font-weight:600;">
+                    <span class="material-icons-outlined" style="font-size:16px;vertical-align:-3px;color:#27AAE1">home</span>
+                    站所 AAAAAAAAA...
+                  </span>
+                  <button class="chip-assign">指派</button>
+                  <button class="chip-assign">日期</button>
+                  <button class="chip-assign">站所</button>
+                </div>
+                <div class="order-list-scroll">
+                  <div class="order-list-inner">
+                    <div class="order-header">
+                      <span class="oh-fixed"></span>
+                      <span class="oh-num"></span>
+                      <span class="oh-status">訂單狀態</span>
+                      <span class="oh-id">訂單編號</span>
+                      <span class="oh-addr">地址（寄件人/收件人）</span>
+                      <span class="oh-units">總單位數</span>
+                      <span class="oh-sms">簡訊</span>
+                      <span class="oh-name">收件人姓名</span>
+                      <span class="oh-phone">收件人手機</span>
+                      <span class="oh-pickup">預計取貨日與時間</span>
+                      <span class="oh-deliver">預計配達日與時間</span>
+                    </div>
+
+                    <div class="order-row active" data-order="TJIE34981" onmouseenter="highlightOrder('TJIE34981')" onmouseleave="unhighlightOrder('TJIE34981')">
+                      <span class="or-drag"><span class="material-icons-outlined">drag_indicator</span></span>
+                      <span class="or-check"><input type="checkbox"></span>
+                      <span class="or-num">1</span>
+                      <span class="or-status">新建單</span>
+                      <span class="or-id">TJIE34981</span>
+                      <span class="or-addr">桃園市中壢區南雄街249號20樓</span>
+                      <span class="or-units">23</span>
+                      <span class="or-sms"><span class="material-icons-outlined">done_all</span> 1</span>
+                      <span class="or-name">陳花椒</span>
+                      <span class="or-phone">(+886)929814776</span>
+                      <span class="or-pickup">2024/04/12 15:00</span>
+                      <span class="or-deliver">2024/04/12 15:00</span>
+                    </div>
+                    <div class="order-row" data-order="TJIE34982" onmouseenter="highlightOrder('TJIE34982')" onmouseleave="unhighlightOrder('TJIE34982')">
+                      <span class="or-drag"><span class="material-icons-outlined">drag_indicator</span></span>
+                      <span class="or-check"><input type="checkbox"></span>
+                      <span class="or-num">2</span>
+                      <span class="or-status">新建單</span>
+                      <span class="or-id">TJIE34982</span>
+                      <span class="or-addr">臺中市太平區長億一街如...</span>
+                      <span class="or-units">23</span>
+                      <span class="or-sms"><span class="material-icons-outlined">done_all</span> 1</span>
+                      <span class="or-name">陳花椒</span>
+                      <span class="or-phone">(+886)929814776</span>
+                      <span class="or-pickup">2024/04/12 15:00</span>
+                      <span class="or-deliver">2024/04/12 15:00</span>
+                    </div>
+                    <div class="order-row" data-order="TJIE34983" onmouseenter="highlightOrder('TJIE34983')" onmouseleave="unhighlightOrder('TJIE34983')">
+                      <span class="or-drag"><span class="material-icons-outlined">drag_indicator</span></span>
+                      <span class="or-check"><input type="checkbox"></span>
+                      <span class="or-num">3</span>
+                      <span class="or-status">新建單</span>
+                      <span class="or-id">TJIE34983</span>
+                      <span class="or-addr">桃園市中壢區民族路110號10樓</span>
+                      <span class="or-units">23</span>
+                      <span class="or-sms"><span class="material-icons-outlined">done_all</span> 1</span>
+                      <span class="or-name">陳花椒</span>
+                      <span class="or-phone">(+886)929814776</span>
+                      <span class="or-pickup">2024/04/12 15:00</span>
+                      <span class="or-deliver">2024/04/12 15:00</span>
+                    </div>
+                    <div class="order-row" data-order="TJIE34984" onmouseenter="highlightOrder('TJIE34984')" onmouseleave="unhighlightOrder('TJIE34984')">
+                      <span class="or-drag"><span class="material-icons-outlined">drag_indicator</span></span>
+                      <span class="or-check"><input type="checkbox"></span>
+                      <span class="or-num">4</span>
+                      <span class="or-status">新建單</span>
+                      <span class="or-id">TJIE34984</span>
+                      <span class="or-addr">臺中市北屯區崇德五路497號1...</span>
+                      <span class="or-units">23</span>
+                      <span class="or-sms"><span class="material-icons-outlined">done_all</span> 1</span>
+                      <span class="or-name">陳花椒</span>
+                      <span class="or-phone">(+886)929814776</span>
+                      <span class="or-pickup">2024/04/12 15:00</span>
+                      <span class="or-deliver">2024/04/12 15:00</span>
+                    </div>
+                    <div class="order-row" data-order="TJIE34985" onmouseenter="highlightOrder('TJIE34985')" onmouseleave="unhighlightOrder('TJIE34985')">
+                      <span class="or-drag"><span class="material-icons-outlined">drag_indicator</span></span>
+                      <span class="or-check"><input type="checkbox"></span>
+                      <span class="or-num">5</span>
+                      <span class="or-status">新建單</span>
+                      <span class="or-id">TJIE34985</span>
+                      <span class="or-addr">台北中正區思源街18號</span>
+                      <span class="or-units">23</span>
+                      <span class="or-sms"><span class="material-icons-outlined">done_all</span> 1</span>
+                      <span class="or-name">陳花椒</span>
+                      <span class="or-phone">(+886)929814776</span>
+                      <span class="or-pickup">2024/04/12 15:00</span>
+                      <span class="or-deliver">2024/04/12 15:00</span>
+                    </div>
+                    <div class="order-row" data-order="TJIE34986" onmouseenter="highlightOrder('TJIE34986')" onmouseleave="unhighlightOrder('TJIE34986')">
+                      <span class="or-drag"><span class="material-icons-outlined">drag_indicator</span></span>
+                      <span class="or-check"><input type="checkbox"></span>
+                      <span class="or-num">6</span>
+                      <span class="or-status">新建單</span>
+                      <span class="or-id">TJIE34986</span>
+                      <span class="or-addr">台北中正區思源街18號</span>
+                      <span class="or-units">23</span>
+                      <span class="or-sms"><span class="material-icons-outlined">done_all</span> 1</span>
+                      <span class="or-name">陳花椒</span>
+                      <span class="or-phone">(+886)929814776</span>
+                      <span class="or-pickup">2024/04/12 15:00</span>
+                      <span class="or-deliver">2024/04/12 15:00</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Dispatch Group 2 (collapsed) -->
+        <div class="dispatch-group dispatch-collapsed" style="margin-top: 16px;">
+          <div class="dispatch-card-wrapper">
+            <div class="dispatch-checkbox-col">
+              <input type="checkbox">
+              <button class="expand-btn">
+                <span class="material-icons-outlined" style="font-size:20px">keyboard_arrow_down</span>
+              </button>
+            </div>
+            <div class="dispatch-card" data-color="purple">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">20240304_中區_2</div>
+                  <div class="card-stats">
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">place</span>
+                      停靠點 <span class="card-stat-value">5</span>
+                    </div>
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">date_range</span>
+                      派車單建立日期 <span class="card-stat-value">2024/05/06</span>
+                    </div>
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">inventory_2</span>
+                      總單位數 <span class="card-stat-value">150</span>
+                    </div>
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">image_aspect_ratio</span>
+                      總材積 <span class="card-stat-value">8 cuft</span>
+                    </div>
+                    <div class="card-stat">
+                      <span class="material-icons-outlined">monitor_weight</span>
+                      總重量 <span class="card-stat-value">16 kg</span>
+                    </div>
+                  </div>
+                  <div class="card-chips">
+                    <div class="chip-driver">
+                      <span class="material-icons-outlined">person</span> 李大華
+                    </div>
+                    <div class="chip-date">
+                      <span class="material-icons-outlined">date_range</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- spacer for fixed bottom bar -->
+        <div style="height:72px;"></div>
+
+      </div>
+    </div>
+    <!-- Drawer-style Product Overview (fixed) -->
+    <div class="tooltip-overlay" id="tooltip1">
+      <div class="tooltip-arrow-border"></div>
+      <div class="tooltip-arrow"></div>
+      <div class="tooltip-panel">
+        <div class="tooltip-header">
+          <div class="tooltip-title-area">
+            <span class="tooltip-title">貨品明細總覽</span>
+            <span class="tooltip-subtitle">訂單 60 · 貨品 160</span>
+          </div>
+          <button class="tooltip-close" onclick="document.getElementById('tooltip1').style.display='none'">
+            <span class="material-icons-outlined" style="font-size:20px">close</span>
+          </button>
+        </div>
+        <div class="tooltip-body" id="tooltip-body">
+          <div class="tooltip-order-section highlight" id="section-TJIE34981">
+            <div class="tooltip-order-header" onclick="toggleSection(this)">
+              <span class="tooltip-order-back material-icons-outlined">chevron_left</span>
+              <span class="tooltip-order-id">TJIE34981</span>
+            </div>
+            <table class="product-table">
+              <thead><tr><th style="width:140px">貨品名稱</th><th style="width:50px">單位數</th><th style="width:80px">貨品編號</th><th style="width:60px">配件</th><th>貨品備記</th></tr></thead>
+              <tbody>
+                <tr><td class="product-name">五尺雙人床墊</td><td>10</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>100</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>1</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>12</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>6</td><td>TJS-12293</td><td>枕頭一顆</td><td><span class="product-tag">需安裝</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tooltip-order-section" id="section-TJIE34982">
+            <div class="tooltip-order-header" onclick="toggleSection(this)">
+              <span class="tooltip-order-back material-icons-outlined">chevron_left</span>
+              <span class="tooltip-order-id">TJIE34982</span>
+            </div>
+            <table class="product-table">
+              <thead><tr><th style="width:140px">貨品名稱</th><th style="width:50px">單位數</th><th style="width:80px">貨品編號</th><th style="width:60px">配件</th><th>貨品備記</th></tr></thead>
+              <tbody>
+                <tr><td class="product-name">兒童針織恐龍沙發椅</td><td>10</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>50</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>8</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>12</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tooltip-order-section" id="section-TJIE34983">
+            <div class="tooltip-order-header" onclick="toggleSection(this)">
+              <span class="tooltip-order-back material-icons-outlined">chevron_left</span>
+              <span class="tooltip-order-id">TJIE34983</span>
+            </div>
+            <table class="product-table">
+              <thead><tr><th style="width:140px">貨品名稱</th><th style="width:50px">單位數</th><th style="width:80px">貨品編號</th><th style="width:60px">配件</th><th>貨品備記</th></tr></thead>
+              <tbody>
+                <tr><td class="product-name">林氏木業簡約餐椅</td><td>20</td><td>TJS-45678</td><td>-</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>15</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">兒童書桌椅組</td><td>10</td><td>TJS-99012</td><td>-</td><td><span class="product-tag">需安裝</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tooltip-order-section" id="section-TJIE34984">
+            <div class="tooltip-order-header" onclick="toggleSection(this)">
+              <span class="tooltip-order-back material-icons-outlined">chevron_left</span>
+              <span class="tooltip-order-id">TJIE34984</span>
+            </div>
+            <table class="product-table">
+              <thead><tr><th style="width:140px">貨品名稱</th><th style="width:50px">單位數</th><th style="width:80px">貨品編號</th><th style="width:60px">配件</th><th>貨品備記</th></tr></thead>
+              <tbody>
+                <tr><td class="product-name">五尺雙人床墊</td><td>20</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">兒童針織恐龍沙發椅</td><td>15</td><td>TJS-34567</td><td>-</td><td>-</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tooltip-order-section" id="section-TJIE34985">
+            <div class="tooltip-order-header" onclick="toggleSection(this)">
+              <span class="tooltip-order-back material-icons-outlined">chevron_left</span>
+              <span class="tooltip-order-id">TJIE34985</span>
+            </div>
+            <table class="product-table">
+              <thead><tr><th style="width:140px">貨品名稱</th><th style="width:50px">單位數</th><th style="width:80px">貨品編號</th><th style="width:60px">配件</th><th>貨品備記</th></tr></thead>
+              <tbody>
+                <tr><td class="product-name">五尺雙人床墊</td><td>13</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+                <tr><td class="product-name">兒童書桌椅組</td><td>10</td><td>TJS-99012</td><td>-</td><td><span class="product-tag">需安裝</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tooltip-order-section" id="section-TJIE34986">
+            <div class="tooltip-order-header" onclick="toggleSection(this)">
+              <span class="tooltip-order-back material-icons-outlined">chevron_left</span>
+              <span class="tooltip-order-id">TJIE34986</span>
+            </div>
+            <table class="product-table">
+              <thead><tr><th style="width:140px">貨品名稱</th><th style="width:50px">單位數</th><th style="width:80px">貨品編號</th><th style="width:60px">配件</th><th>貨品備記</th></tr></thead>
+              <tbody>
+                <tr><td class="product-name">林氏木業簡約餐椅</td><td>8</td><td>TJS-45678</td><td>-</td><td>-</td></tr>
+                <tr><td class="product-name">五尺雙人床墊</td><td>10</td><td>TJS-12293</td><td>枕頭一顆</td><td>-</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fixed bottom action bar -->
+    <div class="bottom-action-bar">
+      <button class="btn btn-outline">上一步</button>
+      <button class="btn btn-primary">建立 n 張派車單</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Hover sync: order row ↔ tooltip section
+function highlightOrder(orderId) {
+  // Highlight order row
+  document.querySelectorAll('.order-row').forEach(r => r.classList.remove('active'));
+  const row = document.querySelector(`.order-row[data-order="${orderId}"]`);
+  if (row) row.classList.add('active');
+
+  // Highlight tooltip section
+  document.querySelectorAll('.tooltip-order-section').forEach(s => s.classList.remove('highlight'));
+  const section = document.getElementById(`section-${orderId}`);
+  if (section) {
+    section.classList.add('highlight');
+    // Scroll tooltip to show this section
+    section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Reposition tooltip arrow to align with hovered row
+  repositionArrow(row, orderId);
+}
+
+function unhighlightOrder(orderId) {
+  // Keep the last hovered state visible (don't remove)
+}
+
+function repositionArrow(row, orderId) {
+  if (!row) return;
+  const tooltip = document.getElementById('tooltip1');
+  const arrow = tooltip.querySelector('.tooltip-arrow');
+  const arrowBorder = tooltip.querySelector('.tooltip-arrow-border');
+  const panel = tooltip.querySelector('.tooltip-panel');
+
+  // Row position on screen → map to drawer's coordinate system
+  const rowRect = row.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+
+  const rowCenter = rowRect.top + rowRect.height / 2 - panelRect.top;
+
+  // Clamp arrow within panel bounds
+  const clampedTop = Math.max(20, Math.min(rowCenter, panelRect.height - 20));
+
+  arrow.style.top = (clampedTop - 12) + 'px';
+  arrowBorder.style.top = (clampedTop - 13) + 'px';
+}
+
+// Also allow clicking tooltip sections to highlight corresponding order row
+document.querySelectorAll('.tooltip-order-section').forEach(section => {
+  section.addEventListener('mouseenter', () => {
+    const orderId = section.id.replace('section-', '');
+    highlightOrder(orderId);
+  });
+});
+
+// Toggle section collapse (optional future feature)
+function toggleSection(header) {
+  const table = header.nextElementSibling;
+  if (table && table.tagName === 'TABLE') {
+    table.style.display = table.style.display === 'none' ? '' : 'none';
+  }
+}
+
+// Initial arrow position
+window.addEventListener('load', () => {
+  const firstRow = document.querySelector('.order-row.active');
+  if (firstRow) repositionArrow(firstRow, 'TJIE34981');
+});
+
+// Keep arrow aligned on scroll
+document.querySelector('.dispatch-scroll-area')?.addEventListener('scroll', () => {
+  const activeRow = document.querySelector('.order-row.active');
+  if (activeRow) repositionArrow(activeRow);
+});
+</script>
+</body>
+</html>
