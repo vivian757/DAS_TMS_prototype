@@ -90,6 +90,20 @@
   .expand-btn { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 6px; color: #8F9193; }
   .expand-btn:hover { background: #F0F1F3; }
 
+  .btn-product-overview-global {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid #E1E2E5; border-radius: 8px;
+    background: white; cursor: pointer; color: #5C5F61;
+    font-size: 13px; font-weight: 600; font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-product-overview-global:hover { border-color: #27AAE1; color: #27AAE1; background: #EAF9FF; }
+  .btn-product-overview-global.active { border-color: #27AAE1; color: white; background: #27AAE1; }
+  .btn-product-overview-global .material-icons-outlined { font-size: 18px; }
+
   /* Order List inside dispatch */
   .order-list-section { border-top: 1px solid #E1E2E5; }
   .order-list-toolbar { display: flex; justify-content: flex-end; padding: 4px 12px; gap: 4px; }
@@ -144,10 +158,29 @@
     top: 64px;
     bottom: 0;
     width: 360px;
+    min-width: 280px;
+    max-width: 700px;
     z-index: 15;
     pointer-events: auto;
     display: flex;
     align-items: stretch;
+  }
+
+  /* Resize handle on left edge */
+  .drawer-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 20;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .drawer-resize-handle:hover,
+  .drawer-resize-handle.dragging {
+    background: rgba(39, 170, 225, 0.3);
   }
 
   .tooltip-panel {
@@ -344,7 +377,13 @@
         </div>
       </div>
 
-      <div class="hint-text">以下為自動分類後的結果，您可在建立前調整，並勾選欲建立的派車單。</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="hint-text" style="margin-bottom:0;">以下為自動分類後的結果，您可在建立前調整，並勾選欲建立的派車單。</div>
+        <button class="btn-product-overview-global" onclick="toggleDrawer()" title="展開所有派車單的貨品明細總覽">
+          <span class="material-icons-outlined">inventory_2</span>
+          <span>貨品明細總覽</span>
+        </button>
+      </div>
 
       <!-- Dispatch scroll area -->
       <div class="dispatch-scroll-area">
@@ -571,7 +610,8 @@
       </div>
     </div>
     <!-- Drawer-style Product Overview (fixed) -->
-    <div class="tooltip-overlay" id="tooltip1">
+    <div class="tooltip-overlay" id="tooltip1" style="display:none;">
+      <div class="drawer-resize-handle" id="resizeHandle"></div>
       <div class="tooltip-arrow-border"></div>
       <div class="tooltip-arrow"></div>
       <div class="tooltip-panel">
@@ -580,7 +620,7 @@
             <span class="tooltip-title">貨品明細總覽</span>
             <span class="tooltip-subtitle">訂單 60 · 貨品 160</span>
           </div>
-          <button class="tooltip-close" onclick="document.getElementById('tooltip1').style.display='none'">
+          <button class="tooltip-close" onclick="toggleDrawer()">
             <span class="material-icons-outlined" style="font-size:20px">close</span>
           </button>
         </div>
@@ -682,6 +722,15 @@
 </div>
 
 <script>
+// Toggle drawer open/close
+function toggleDrawer() {
+  const drawer = document.getElementById('tooltip1');
+  const btn = document.querySelector('.btn-product-overview-global');
+  const isHidden = drawer.style.display === 'none';
+  drawer.style.display = isHidden ? 'flex' : 'none';
+  if (btn) btn.classList.toggle('active', isHidden);
+}
+
 // Hover sync: order row ↔ tooltip section
 function highlightOrder(orderId) {
   // Highlight order row
@@ -753,6 +802,38 @@ document.querySelector('.dispatch-scroll-area')?.addEventListener('scroll', () =
   const activeRow = document.querySelector('.order-row.active');
   if (activeRow) repositionArrow(activeRow);
 });
+// ===== Drawer Resize =====
+(function() {
+  const handle = document.getElementById('resizeHandle');
+  const drawer = document.getElementById('tooltip1');
+  let isDragging = false;
+  let startX, startWidth;
+
+  handle.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startX = e.clientX;
+    startWidth = drawer.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const delta = startX - e.clientX;
+    const newWidth = Math.max(280, Math.min(700, startWidth + delta));
+    drawer.style.width = newWidth + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
 </script>
 </body>
 </html>
