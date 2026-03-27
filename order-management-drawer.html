@@ -385,15 +385,44 @@
   /* ===== Product Overview Drawer ===== */
   .drawer-overlay {
     position: absolute;
-    top: 0; right: 0; bottom: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    right: 16px;
+    height: 620px;
     width: var(--drawer-width);
     background: #fff;
-    border-left: 1px solid var(--grey04);
-    box-shadow: -4px 0 16px rgba(0,0,0,.08);
+    border: 1px solid var(--grey04);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
     z-index: 30;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  /* Tooltip arrow */
+  .drawer-arrow {
+    position: absolute;
+    left: -10px;
+    top: 100px;
+    width: 0; height: 0;
+    border-top: 12px solid transparent;
+    border-bottom: 12px solid transparent;
+    border-right: 10px solid white;
+    filter: drop-shadow(-3px 0 2px rgba(0,0,0,0.06));
+    z-index: 31;
+    transition: top 0.15s ease;
+  }
+  .drawer-arrow-border {
+    position: absolute;
+    left: -11px;
+    top: 99px;
+    width: 0; height: 0;
+    border-top: 13px solid transparent;
+    border-bottom: 13px solid transparent;
+    border-right: 11px solid var(--grey04);
+    z-index: 30;
+    transition: top 0.15s ease;
   }
 
   .drawer-header {
@@ -702,6 +731,8 @@
 
       <!-- ===== Product Overview Drawer ===== -->
       <div class="drawer-overlay" id="productDrawer">
+        <div class="drawer-arrow-border"></div>
+        <div class="drawer-arrow"></div>
         <div class="drawer-header">
           <div>
             <span class="drawer-title">貨品明細總覽</span>
@@ -801,7 +832,7 @@ dispatchOrders.forEach((o) => {
     <td style="font-weight:500;color:var(--dark01)">${o.id}</td>
   `;
   // Hover sync
-  tr.addEventListener('mouseenter', () => highlightDrawerSection(o.id));
+  tr.addEventListener('mouseenter', (e) => highlightDrawerSection(o.id, e));
   tr.addEventListener('mouseleave', () => clearDrawerHighlight());
   dispatchBody.appendChild(tr);
 });
@@ -848,7 +879,7 @@ function closeDrawer() {
   document.getElementById('productDrawer').style.display = 'none';
 }
 
-function highlightDrawerSection(orderId) {
+function highlightDrawerSection(orderId, event) {
   // Highlight dispatch row
   document.querySelectorAll('#dispatchTableBody tr').forEach((tr) => {
     if (tr.dataset.orderId === orderId) {
@@ -862,6 +893,24 @@ function highlightDrawerSection(orderId) {
       s.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   });
+  // Reposition arrow to hovered row
+  const row = event ? event.currentTarget : document.querySelector(`#dispatchTableBody tr[data-order-id="${orderId}"]`);
+  if (row) repositionArrow(row);
+}
+
+function repositionArrow(row) {
+  const drawer = document.getElementById('productDrawer');
+  const arrow = drawer.querySelector('.drawer-arrow');
+  const arrowBorder = drawer.querySelector('.drawer-arrow-border');
+  if (!arrow || !arrowBorder) return;
+
+  const rowRect = row.getBoundingClientRect();
+  const drawerRect = drawer.getBoundingClientRect();
+  const rowCenter = rowRect.top + rowRect.height / 2 - drawerRect.top;
+  const clamped = Math.max(20, Math.min(rowCenter, drawerRect.height - 20));
+
+  arrow.style.top = (clamped - 12) + 'px';
+  arrowBorder.style.top = (clamped - 13) + 'px';
 }
 
 function clearDrawerHighlight() {
