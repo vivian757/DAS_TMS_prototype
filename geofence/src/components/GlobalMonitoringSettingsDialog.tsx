@@ -22,7 +22,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import AlarmOutlinedIcon from '@mui/icons-material/AlarmOutlined';
 
 export type OrderStatusCode = '待派送' | '進行中' | '已完成' | '已取消';
 const ORDER_STATUS_OPTIONS: OrderStatusCode[] = [
@@ -103,7 +103,7 @@ export default function GlobalMonitoringSettingsDialog({
         <Typography
           sx={{ fontSize: 13, color: theme.palette.dasGrey.grey01, lineHeight: 1.5 }}
         >
-          此設定將套用於所有圍籬，如訂單受圍籬監控，則會觸發相關判斷及通知。
+          此設定將套用於所有圍籬，如訂單受圍籬監控，則會觸發相關判斷。
         </Typography>
       </DialogTitle>
 
@@ -152,7 +152,7 @@ export default function GlobalMonitoringSettingsDialog({
 
         {/* 異常告警 */}
         <Box>
-          <SectionTitle title="異常提醒" />
+          <SectionTitle title="異常通知" />
 
           <AlertTimeline
             earlyArrival={draft.alerts.earlyArrival}
@@ -168,14 +168,14 @@ export default function GlobalMonitoringSettingsDialog({
                 />
               }
               title="提早抵達"
-              calcExplain="觸發時機：預計配達開始時間 − 設定分鐘數。例如預計 10:00 開始，提早 10 分鐘 → 09:50 起若進場即觸發。"
+              calcExplain="觸發時機：預計配達/取貨開始時間 − 設定分鐘數。例如預計 10:00 開始，提早 10 分鐘 → 09:50 起若進場即觸發。"
               renderSentence={(input) => (
                 <>
                   <Typography variant="body2">
-                    車輛比訂單「預計配達開始時間」提早
+                    車輛比訂單「預計配達/取貨開始時間」提早
                   </Typography>
                   {input}
-                  <Typography variant="body2">分鐘進場</Typography>
+                  <Typography variant="body2">分鐘進場，則發送通知。</Typography>
                 </>
               )}
               enabled={draft.alerts.earlyArrival.enabled}
@@ -206,14 +206,14 @@ export default function GlobalMonitoringSettingsDialog({
                 />
               }
               title="可能會逾時"
-              calcExplain="觸發時機：預計配達結束時間 − 設定分鐘數，仍未進場時。例如預計 12:00 結束，提前 60 分鐘 → 11:00 起若仍未進場即觸發。"
+              calcExplain="觸發時機：預計配達/取貨結束時間 − 設定分鐘數，仍未進場時。例如預計 12:00 結束，提前 60 分鐘 → 11:00 起若仍未進場即觸發。"
               renderSentence={(input) => (
                 <>
                   <Typography variant="body2">
-                    車輛於訂單「預計配達結束時間」前
+                    車輛於訂單「預計配達/取貨結束時間」前
                   </Typography>
                   {input}
-                  <Typography variant="body2">分鐘還沒進場</Typography>
+                  <Typography variant="body2">分鐘還沒進場，則發送通知。</Typography>
                 </>
               )}
               enabled={draft.alerts.overtime.enabled}
@@ -239,20 +239,16 @@ export default function GlobalMonitoringSettingsDialog({
             />
             <AlertCard
               icon={
-                <ErrorOutlineIcon
+                <AlarmOutlinedIcon
                   sx={{ fontSize: 20, color: theme.palette.error.main }}
                 />
               }
-              title="應到未到"
-              calcExplain="觸發時機：預計配達結束時間 + 設定分鐘數，仍未進場時。例如預計 12:00 結束、設定 15 分鐘 → 12:15 起若仍未進場即觸發。給 OP 一段 buffer 避免太早報警。"
-              renderSentence={(input) => (
-                <>
-                  <Typography variant="body2">
-                    車輛於訂單「預計配達結束時間」後
-                  </Typography>
-                  {input}
-                  <Typography variant="body2">分鐘還沒進場</Typography>
-                </>
+              title="遲到"
+              calcExplain="觸發時機：超過預計配達/取貨結束時間且仍未進場時即觸發。"
+              renderSentence={() => (
+                <Typography variant="body2">
+                  車輛於訂單「預計配達/取貨結束時間」後才進場，則發送通知。
+                </Typography>
               )}
               enabled={draft.alerts.noShow.enabled}
               onEnabledChange={(enabled) =>
@@ -261,16 +257,6 @@ export default function GlobalMonitoringSettingsDialog({
                   alerts: {
                     ...d.alerts,
                     noShow: { ...d.alerts.noShow, enabled },
-                  },
-                }))
-              }
-              threshold={draft.alerts.noShow.thresholdMin}
-              onThresholdChange={(thresholdMin) =>
-                setDraft((d) => ({
-                  ...d,
-                  alerts: {
-                    ...d.alerts,
-                    noShow: { ...d.alerts.noShow, thresholdMin },
                   },
                 }))
               }
@@ -312,17 +298,20 @@ function NumberInput({
   min,
   max,
   onChange,
+  disabled,
 }: {
   value: number;
   min: number;
   max: number;
   onChange: (n: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <TextField
       size="small"
       type="number"
       value={value}
+      disabled={disabled}
       onChange={(e) => {
         const n = parseInt(e.target.value, 10);
         if (!isFinite(n)) return;
@@ -489,9 +478,9 @@ function AlertTimeline({
     },
     {
       kind: 'alert' as const,
-      label: '應到未到',
+      label: '遲到',
       anchorRef: '預計結束',
-      sub: `+${noShow.thresholdMin} 分`,
+      sub: '之後',
       color: theme.palette.error.main,
       enabled: noShow.enabled,
     },
@@ -513,16 +502,40 @@ function AlertTimeline({
       }}
     >
       <Typography
-        variant="footnote"
-        sx={{ display: 'block', color: theme.palette.dasGrey.grey01, mb: 1 }}
+        sx={{
+          display: 'block',
+          fontWeight: 600,
+          fontSize: 14,
+          color: theme.palette.dasDark.dark01,
+          mb: 0.5,
+        }}
       >
-        參考時間軸（僅示意，實際時間將根據訂單的預計配達開始/結束時間為準）
+        參考時間軸
+      </Typography>
+      <Typography
+        sx={{
+          display: 'block',
+          fontSize: 13,
+          color: theme.palette.dasGrey.grey01,
+          lineHeight: 1.6,
+          mb: 1.5,
+        }}
+      >
+        開啟後將發送通知至 TMS，並根據訂單實際設定的時間為準（業務類型「送」：預計配達開始/結束時間；「取」：預計取貨開始/結束時間）。
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
         {items.map((it, i) => {
           const isAlert = it.kind === 'alert';
-          const dotColor = isAlert ? it.color : theme.palette.dasGrey.grey01;
-          const textColor = isAlert ? it.color : theme.palette.dasDark.dark01;
+          const dotColor = isAlert
+            ? it.enabled
+              ? it.color
+              : theme.palette.dasGrey.grey03
+            : theme.palette.dasGrey.grey01;
+          const textColor = isAlert
+            ? it.enabled
+              ? it.color
+              : theme.palette.dasGrey.grey02
+            : theme.palette.dasDark.dark01;
           return (
             <Box
               key={i}
@@ -557,16 +570,18 @@ function AlertTimeline({
                     >
                       {it.label}
                     </Typography>
-                    <Typography
-                      sx={{
-                        fontSize: 11,
-                        color: textColor,
-                        fontVariantNumeric: 'tabular-nums',
-                        lineHeight: 1.3,
-                      }}
-                    >
-                      {it.anchorRef} {it.sub}
-                    </Typography>
+                    {it.enabled && (
+                      <Typography
+                        sx={{
+                          fontSize: 11,
+                          color: textColor,
+                          fontVariantNumeric: 'tabular-nums',
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {it.anchorRef} {it.sub}
+                      </Typography>
+                    )}
                   </>
                 )}
               </Box>
@@ -703,7 +718,9 @@ function AlertCard({
               alignItems: 'center',
               gap: 0.75,
               flexWrap: 'wrap',
-              color: theme.palette.dasDark.dark01,
+              color: enabled
+                ? theme.palette.dasDark.dark01
+                : theme.palette.dasGrey.grey02,
             }}
           >
             {hasThreshold
@@ -713,6 +730,7 @@ function AlertCard({
                     min={1}
                     max={240}
                     onChange={onThresholdChange!}
+                    disabled={!enabled}
                   />,
                 )
               : renderSentence()}
@@ -747,9 +765,6 @@ function AlertCard({
             checked={enabled}
             onChange={(_, v) => onEnabledChange(v)}
           />
-          <Typography variant="body2" sx={{ color: theme.palette.dasGrey.grey01 }}>
-            發送通知
-          </Typography>
         </Box>
       </Box>
     </Paper>
