@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Alert,
   Autocomplete,
@@ -14,7 +15,6 @@ import {
   FormControlLabel,
   IconButton,
   InputAdornment,
-  Link,
   Menu,
   MenuItem,
   Paper,
@@ -53,7 +53,6 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon from '@mui/icons-material/Add';
@@ -63,21 +62,20 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import SensorsIcon from '@mui/icons-material/Sensors';
 
-import { mockGeofences, Geofence, guessAddress, AuditEntry, centroidOf, mockOrdersForGeofence } from '../data/mockGeofences';
+import { mockGeofences, Geofence, guessAddress, AuditEntry, centroidOf } from '../data/mockGeofences';
 import { mockEvents } from '../data/mockEvents';
 import {
   DeleteConfirmDialog,
   ToggleConfirmDialog,
   EditImpactConfirmDialog,
+  EditConfirmDialog,
   BatchDeleteConfirmDialog,
 } from '../components/GeofenceDialogs';
 import GlobalMonitoringSettingsDialog, {
   DEFAULT_MONITORING_SETTINGS,
   MonitoringSettingsState,
 } from '../components/GlobalMonitoringSettingsDialog';
-import BatchImportDialog from '../components/BatchImportDialog';
 import PolygonDrawLayer from '../components/PolygonDrawLayer';
-import GeofenceOrdersButton from '../components/GeofenceOrdersButton';
 
 const DRAWER_DEFAULT_WIDTH = 400;
 const DRAWER_MIN_WIDTH = 320;
@@ -210,6 +208,8 @@ function MapClickCatcher({
 
 export default function PrototypeA() {
   const theme = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [data, setData] = useState<Geofence[]>(mockGeofences);
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState<DrawerMode>('list');
@@ -219,7 +219,11 @@ export default function PrototypeA() {
   const [fitTrigger, setFitTrigger] = useState(0);
   const [deleting, setDeleting] = useState<Geofence | null>(null);
   const [toggling, setToggling] = useState<{ geofence: Geofence; nextEnabled: boolean } | null>(null);
-  const [pendingEdit, setPendingEdit] = useState<{ updated: Geofence; original: Geofence } | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<{
+    updated: Geofence;
+    original: Geofence;
+    geometryChanged: boolean;
+  } | null>(null);
 
   const [drawerWidth, setDrawerWidth] = useState(DRAWER_DEFAULT_WIDTH);
   const [dragging, setDragging] = useState(false);
@@ -231,8 +235,21 @@ export default function PrototypeA() {
   const [monitoringSettings, setMonitoringSettings] =
     useState<MonitoringSettingsState>(DEFAULT_MONITORING_SETTINGS);
   const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
-  const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 從批次匯入頁返回時讀取結果，秀 snackbar
+  useEffect(() => {
+    const result = (location.state as { batchImportResult?: { success: number; failed: number } } | null)
+      ?.batchImportResult;
+    if (result) {
+      setSnack(
+        `已匯入：成功 ${result.success} 筆 · 失敗 ${result.failed} 筆`,
+      );
+      // 清掉 state 避免重整或返回時重複觸發
+      navigate(location.pathname, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -427,12 +444,19 @@ export default function PrototypeA() {
         updatedAt: today,
         auditLog: [newEntry, ...focused.auditLog],
       };
-      // 有監控中訂單 → 先彈確認，否則直接套用
-      if (focused.usingOrderCount > 0) {
-        setPendingEdit({ updated, original: focused });
-        return;
-      }
-      applyEdit(updated);
+      const addressChanged = focused.address !== updated.address;
+      const radiusChanged =
+        draft.shape === '圓形' && focused.radius !== draft.radius;
+      const centerChanged =
+        draft.shape === '圓形' && (focused.lat !== lat || focused.lng !== lng);
+      const verticesChanged =
+        draft.shape === '多邊形' &&
+        JSON.stringify(focused.vertices ?? []) !==
+          JSON.stringify(draft.vertices);
+      const geometryChanged =
+        addressChanged || radiusChanged || centerChanged || verticesChanged;
+
+      setPendingEdit({ updated, original: focused, geometryChanged });
       return;
     }
 
@@ -515,7 +539,7 @@ export default function PrototypeA() {
             onSearchChange={setSearch}
             onFocus={(id) => focusGeofence(id)}
             onCreate={startCreate}
-            onBatchImport={() => setBatchImportOpen(true)}
+            onBatchImport={() => navigate('/a/batch-import')}
             selectedIds={selectedIds}
             onToggleRow={(id) => {
               setSelectedIds((prev) => {
@@ -799,7 +823,7 @@ export default function PrototypeA() {
           </Tooltip>
         )}
 
-        {/* 監控 Toolbar — top-right 橫式工具列
+        {/* 監控 Toolbar — top-right 卡片
             隱藏於新增/編輯流程,避免中途切換 context */}
         {!isFormMode && (
           <Paper
@@ -808,69 +832,89 @@ export default function PrototypeA() {
               top: 16,
               right: 16,
               zIndex: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.75,
-              px: 2,
-              py: 1,
               borderRadius: 2,
               boxShadow: '0px 2px 8px rgba(0,0,0,0.16)',
               bgcolor: '#fff',
+              overflow: 'hidden',
+              minWidth: 280,
             }}
           >
-            <Chip
-              icon={<SensorsIcon sx={{ fontSize: 14 }} />}
-              label={`每 ${monitoringSettings.detectFrequencyMin} 分鐘偵測`}
-              size="small"
-              sx={{
-                bgcolor: theme.palette.dasGrey.grey06,
-                color: theme.palette.dasDark.dark03,
-                fontSize: 12,
-                fontWeight: 500,
-                height: 24,
-                '& .MuiChip-icon': {
-                  color: theme.palette.dasDark.dark03,
-                  ml: 0.75,
-                },
-                '& .MuiChip-label': { px: 1 },
-              }}
-            />
-            <Button
-              size="small"
-              startIcon={<TuneOutlinedIcon sx={{ fontSize: 16 }} />}
-              onClick={() => setRulesDialogOpen(true)}
-              sx={{
-                minWidth: 0,
-                px: 1,
-                fontSize: 14,
-                fontWeight: 600,
-                color: theme.palette.dasPrimary.primary,
-              }}
-            >
-              監控設定
-            </Button>
             <Box
               sx={{
-                width: '1px',
-                height: 20,
-                bgcolor: theme.palette.dasGrey.grey04,
-                mx: 0.5,
-              }}
-            />
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setExportOpen(true)}
-              sx={{
-                minWidth: 0,
-                px: 1.25,
-                fontSize: 14,
-                fontWeight: 600,
-                color: theme.palette.dasPrimary.primary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 0.75,
+                px: 2,
+                py: 1.25,
               }}
             >
-              匯出事件紀錄
-            </Button>
+              <SensorsIcon
+                sx={{ fontSize: 18, color: theme.palette.dasDark.dark03 }}
+              />
+              <Typography
+                sx={{ fontSize: 14, color: theme.palette.dasDark.dark03 }}
+              >
+                偵測頻率：每
+              </Typography>
+              <Box
+                sx={{
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: 0.75,
+                  border: `1px solid ${theme.palette.dasGrey.grey04}`,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: theme.palette.dasDark.dark01,
+                  minWidth: 24,
+                  textAlign: 'center',
+                  lineHeight: 1.4,
+                }}
+              >
+                {monitoringSettings.detectFrequencyMin}
+              </Box>
+              <Typography
+                sx={{ fontSize: 14, color: theme.palette.dasDark.dark03 }}
+              >
+                分鐘
+              </Typography>
+            </Box>
+
+            <Box sx={{ height: '1px', bgcolor: theme.palette.dasGrey.grey04 }} />
+
+            <Box sx={{ display: 'flex' }}>
+              <Button
+                fullWidth
+                startIcon={<TuneOutlinedIcon sx={{ fontSize: 18 }} />}
+                onClick={() => setRulesDialogOpen(true)}
+                sx={{
+                  py: 1,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: theme.palette.dasPrimary.primary,
+                  borderRadius: 0,
+                  textTransform: 'none',
+                }}
+              >
+                設定監控
+              </Button>
+              <Box sx={{ width: '1px', bgcolor: theme.palette.dasGrey.grey04 }} />
+              <Button
+                fullWidth
+                startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: 18 }} />}
+                onClick={() => setExportOpen(true)}
+                sx={{
+                  py: 1,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: theme.palette.dasPrimary.primary,
+                  borderRadius: 0,
+                  textTransform: 'none',
+                }}
+              >
+                匯出事件
+              </Button>
+            </Box>
           </Paper>
         )}
 
@@ -920,83 +964,6 @@ export default function PrototypeA() {
               zIndex: 500,
             }}
           >
-            {mode === 'create' && (
-              <Paper
-                sx={{
-                  display: 'flex',
-                  p: 0.5,
-                  gap: 0.25,
-                  borderRadius: 1.5,
-                  boxShadow: '0px 2px 6px rgba(0,0,0,0.18)',
-                }}
-              >
-                <Tooltip title="圓形" placement="top">
-                  <IconButton
-                    size="small"
-                    onClick={() =>
-                      setDraft((d) =>
-                        d ? { ...d, shape: '圓形', vertices: [] } : d,
-                      )
-                    }
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 1,
-                      color:
-                        draft.shape === '圓形'
-                          ? theme.palette.dasPrimary.primary
-                          : theme.palette.dasGrey.grey01,
-                      bgcolor:
-                        draft.shape === '圓形'
-                          ? theme.palette.dasPrimary.lite03
-                          : 'transparent',
-                      '&:hover': {
-                        bgcolor:
-                          draft.shape === '圓形'
-                            ? theme.palette.dasPrimary.lite02
-                            : theme.palette.dasGrey.grey05,
-                      },
-                    }}
-                  >
-                    <RadioButtonUncheckedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="多邊形" placement="top">
-                  <IconButton
-                    size="small"
-                    onClick={() =>
-                      setDraft((d) =>
-                        d
-                          ? { ...d, shape: '多邊形', center: null, radius: 200 }
-                          : d,
-                      )
-                    }
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 1,
-                      color:
-                        draft.shape === '多邊形'
-                          ? theme.palette.dasPrimary.primary
-                          : theme.palette.dasGrey.grey01,
-                      bgcolor:
-                        draft.shape === '多邊形'
-                          ? theme.palette.dasPrimary.lite03
-                          : 'transparent',
-                      '&:hover': {
-                        bgcolor:
-                          draft.shape === '多邊形'
-                            ? theme.palette.dasPrimary.lite02
-                            : theme.palette.dasGrey.grey05,
-                      },
-                    }}
-                  >
-                    <EditOutlinedIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Paper>
-            )}
-
             {draft.shape === '圓形' && (
               <Paper
                 sx={{
@@ -1013,9 +980,7 @@ export default function PrototypeA() {
               >
                 <InfoOutlinedIcon sx={{ fontSize: 16, color: '#fff' }} />
                 <Typography variant="body2" sx={{ color: '#fff', fontWeight: 500 }}>
-                  {draft.center
-                    ? '點地圖可重設中心點 · 拖圓邊 handle 或 slider 調整半徑'
-                    : '輸入地址後按 Enter 自動定位，或直接在地圖上點擊設定中心點'}
+                  直接在地圖上點擊設定中心點，拖移圓形邊框可調整半徑
                 </Typography>
               </Paper>
             )}
@@ -1091,11 +1056,16 @@ export default function PrototypeA() {
       />
 
       <EditImpactConfirmDialog
-        target={
-          pendingEdit
-            ? { geofence: pendingEdit.original, orderCount: pendingEdit.original.usingOrderCount }
-            : null
-        }
+        open={Boolean(pendingEdit?.geometryChanged)}
+        onClose={() => setPendingEdit(null)}
+        onConfirm={() => {
+          if (pendingEdit) applyEdit(pendingEdit.updated);
+          setPendingEdit(null);
+        }}
+      />
+
+      <EditConfirmDialog
+        open={Boolean(pendingEdit && !pendingEdit.geometryChanged)}
         onClose={() => setPendingEdit(null)}
         onConfirm={() => {
           if (pendingEdit) applyEdit(pendingEdit.updated);
@@ -1132,14 +1102,6 @@ export default function PrototypeA() {
         onChange={setMonitoringSettings}
       />
 
-      <BatchImportDialog
-        open={batchImportOpen}
-        onClose={() => setBatchImportOpen(false)}
-        onImport={(count) => {
-          setBatchImportOpen(false);
-          setSnack(`已成功匯入 ${count} 筆圍籬`);
-        }}
-      />
 
       <ExportRecordsDialog
         open={exportOpen}
@@ -1173,6 +1135,7 @@ function ExportRecordsDialog({
   const [geofenceFilter, setGeofenceFilter] = useState<Geofence | null>(null);
   const [vehicleFilter, setVehicleFilter] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<'over_limit' | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -1182,6 +1145,7 @@ function ExportRecordsDialog({
       setGeofenceFilter(null);
       setVehicleFilter(null);
       setIsExporting(false);
+      setExportError(null);
     }
   }, [open]);
 
@@ -1236,22 +1200,35 @@ function ExportRecordsDialog({
     });
   }, [dateRange, geofenceFilter, vehicleFilter]);
 
-  // preset === 'last30' 作為情境範例,demo「超過下載上限」的警示狀態
-  const overLimit = filtered.length > EXPORT_ROW_LIMIT || preset === 'last30';
+  // 條件變動時清掉先前點擊匯出後的錯誤提示
+  useEffect(() => {
+    setExportError(null);
+  }, [dateRange, geofenceFilter, vehicleFilter]);
+
+  // preset === 'last30' 作為情境範例，demo「超過下載上限」的警示狀態
+  const simulatedOverLimit = preset === 'last30';
   const customInvalid =
     preset === 'custom' &&
     (!customFrom || !customTo || customFrom > customTo);
-  const disabled =
-    customInvalid || filtered.length === 0 || overLimit || isExporting;
+  const disabled = customInvalid || isExporting;
 
-  function displayType(t: '進入' | '離開' | '警示' | '停留超時') {
-    return t === '進入' ? '進場' : t === '離開' ? '離場' : t;
+  function handleExport() {
+    if (filtered.length > EXPORT_ROW_LIMIT || simulatedOverLimit) {
+      setExportError('over_limit');
+      return;
+    }
+    setExportError(null);
+    setIsExporting(true);
+    window.setTimeout(() => {
+      onConfirm(rangeLabel, filtered.length);
+    }, 1500);
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
-        <Typography variant="h5Bold">匯出事件紀錄</Typography>
+        <Typography variant="h5Bold">匯出事件</Typography>
       </DialogTitle>
       <DialogContent dividers>
         {/* 日期範圍(必填) */}
@@ -1355,111 +1332,45 @@ function ExportRecordsDialog({
           </Box>
         </Box>
 
-        {/* 預估資訊 */}
+        {/* 提醒 callout */}
         <Box
           sx={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            mb: 0.75,
-            flexWrap: 'wrap',
-          }}
-        >
-          <Typography
-            variant="body2"
-            sx={{ color: theme.palette.dasGrey.grey01 }}
-          >
-            <b style={{ color: theme.palette.dasDark.dark01 }}>
-              {filtered.length.toLocaleString()}
-            </b>
-            &nbsp;筆
-          </Typography>
-          <Typography
-            variant="footnote"
-            sx={{ color: theme.palette.dasGrey.grey01 }}
-          >
-            · {rangeLabel}
-          </Typography>
-        </Box>
-
-        {overLimit && (
-          <Alert severity="warning" sx={{ mb: 1.5, py: 0.5 }}>
-            <Typography variant="body2">
-              超過上限&nbsp;
-              <b>{EXPORT_ROW_LIMIT.toLocaleString()}</b>
-              &nbsp;筆,建議調整日期,或是搭配圍籬 / 車輛篩選以縮小範圍。
-            </Typography>
-          </Alert>
-        )}
-
-        {/* 預覽表 */}
-        <Box
-          sx={{
-            border: `1px solid ${theme.palette.dasGrey.grey04}`,
+            alignItems: 'flex-start',
+            gap: 0.75,
+            px: 1.25,
+            py: 0.75,
             borderRadius: 1,
-            maxHeight: 300,
-            overflow: 'auto',
+            bgcolor: theme.palette.dasPrimary.lite03,
+            border: `1px solid ${theme.palette.dasPrimary.lite04}`,
           }}
         >
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', bgcolor: theme.palette.dasGrey.grey06 }}>時間</TableCell>
-                <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', bgcolor: theme.palette.dasGrey.grey06 }}>車輛</TableCell>
-                <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', bgcolor: theme.palette.dasGrey.grey06 }}>圍籬名稱</TableCell>
-                <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', bgcolor: theme.palette.dasGrey.grey06 }}>訂單編號</TableCell>
-                <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', bgcolor: theme.palette.dasGrey.grey06 }}>事件類型</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.slice(0, 200).map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                    {e.time}
-                  </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{e.vehicle}</TableCell>
-                  <TableCell>{e.geofenceName}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {e.orderId ?? '—'}
-                  </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    <Typography variant="body2">
-                      {displayType(e.type)}
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                    <Typography variant="body2" sx={{ color: theme.palette.dasGrey.grey01 }}>
-                      此條件下沒有符合的事件紀錄
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          {filtered.length > 200 && (
-            <Box sx={{ p: 1, textAlign: 'center', borderTop: `1px solid ${theme.palette.dasGrey.grey04}` }}>
-              <Typography variant="footnote" sx={{ color: theme.palette.dasGrey.grey01 }}>
-                僅預覽前 200 筆,下載將包含全部 {filtered.length.toLocaleString()} 筆
-              </Typography>
-            </Box>
-          )}
+          <InfoOutlinedIcon
+            sx={{
+              fontSize: 16,
+              color: theme.palette.dasPrimary.dark01,
+              mt: '2px',
+              flexShrink: 0,
+            }}
+          />
+          <Typography
+            sx={{
+              fontSize: 12,
+              color: theme.palette.dasPrimary.dark01,
+              lineHeight: 1.5,
+            }}
+          >
+            提醒：若匯出的時間範圍較長，可能因筆數較多而導致等待時間延長與匯出失敗。
+          </Typography>
         </Box>
+
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} color="secondary" disabled={isExporting}>
           取消
         </Button>
         <Button
-          onClick={() => {
-            setIsExporting(true);
-            window.setTimeout(() => {
-              onConfirm(rangeLabel, filtered.length);
-            }, 1500);
-          }}
+          onClick={handleExport}
           variant="contained"
           color="primary"
           disabled={disabled}
@@ -1469,10 +1380,36 @@ function ExportRecordsDialog({
             ) : undefined
           }
         >
-          {isExporting ? '下載中⋯' : '下載 Excel'}
+          {isExporting ? '匯出中⋯' : '匯出'}
         </Button>
       </DialogActions>
     </Dialog>
+
+    <Dialog
+      open={exportError === 'over_limit'}
+      onClose={() => setExportError(null)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle>
+        <Typography variant="h5Bold">無法匯出</Typography>
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body1">
+          筆數已達上限（{EXPORT_ROW_LIMIT.toLocaleString()} 筆），建議縮小範圍。
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button
+          onClick={() => setExportError(null)}
+          variant="contained"
+          color="primary"
+        >
+          知道了
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }
 
@@ -1733,9 +1670,6 @@ function BrowseList({
                   />
                 </Stack>
               </Box>
-              <Box sx={{ flexShrink: 0, mt: -0.5 }}>
-                <GeofenceOrdersButton geofence={g} />
-              </Box>
             </Box>
           </Box>
           );
@@ -1790,28 +1724,53 @@ function FocusedDetail({
       </Box>
 
       <Box sx={{ p: 2.5, flex: 1, overflow: 'auto' }}>
-        <Field
-          label={g.type === '多邊形' ? '參考地址' : '中心點地址'}
-          value={g.address}
-          secondary={`${g.type === '多邊形' ? 'Centroid ' : ''}${g.lat.toFixed(5)}, ${g.lng.toFixed(5)}`}
-        />
-        <Field
-          label={g.type === '多邊形' ? '頂點數' : '半徑'}
-          value={g.type === '多邊形' ? `${g.vertices?.length ?? 0} 個` : `${g.radius}m`}
-        />
+        {g.type === '多邊形' ? (
+          <Box sx={{ mb: 2 }}>
+            <Typography
+              variant="footnote"
+              sx={{ display: 'block', color: theme.palette.dasGrey.grey01, mb: 0.5 }}
+            >
+              頂點地址（{g.vertices?.length ?? 0} 個）
+            </Typography>
+            {g.vertices && g.vertices.length > 0 ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {g.vertices.map((v, i) => (
+                  <Box
+                    key={i}
+                    sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: theme.palette.dasGrey.grey01,
+                        minWidth: 20,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {i + 1}.
+                    </Typography>
+                    <Typography variant="body1">
+                      {guessAddress(v[0], v[1])}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Typography variant="body1">—</Typography>
+            )}
+          </Box>
+        ) : (
+          <>
+            <Field
+              label="中心點地址"
+              value={g.address}
+              secondary={`${g.lat.toFixed(5)}, ${g.lng.toFixed(5)}`}
+            />
+            <Field label="半徑" value={`${g.radius}m`} />
+          </>
+        )}
         <Field label="備註" value={g.note || '—'} />
         <Field label="建立日期" value={g.createdAt} />
-
-        <Box sx={{ mt: 2 }}>
-          <OrdersSection geofence={g} />
-        </Box>
-
-        <Box sx={{ mt: 2 }}>
-          <Typography sx={{ display: 'block', fontSize: 14, fontWeight: 600, mb: 1 }}>
-            異動紀錄
-          </Typography>
-          <AuditLogTable entries={g.auditLog} />
-        </Box>
       </Box>
 
       <Box
@@ -2067,6 +2026,26 @@ function FormDrawer({
             variant="headline"
             sx={{ display: 'block', color: theme.palette.dasGrey.grey01, mb: 0.75 }}
           >
+            圍籬名稱 <span style={{ color: theme.palette.dasPrimary.primary }}>*</span>
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            value={draft.name}
+            onChange={(e) => {
+              onChange({ ...draft, name: e.target.value });
+              if (nameErrorShown) setNameErrorShown(null);
+            }}
+            error={Boolean(nameErrorShown)}
+            helperText={nameErrorShown ?? undefined}
+          />
+        </Box>
+
+        <Box>
+          <Typography
+            variant="headline"
+            sx={{ display: 'block', color: theme.palette.dasGrey.grey01, mb: 0.75 }}
+          >
             類型 <span style={{ color: theme.palette.dasPrimary.primary }}>*</span>
           </Typography>
           {mode === 'edit' ? (
@@ -2151,26 +2130,6 @@ function FormDrawer({
             </ToggleButton>
           </ToggleButtonGroup>
           )}
-        </Box>
-
-        <Box>
-          <Typography
-            variant="headline"
-            sx={{ display: 'block', color: theme.palette.dasGrey.grey01, mb: 0.75 }}
-          >
-            圍籬名稱 <span style={{ color: theme.palette.dasPrimary.primary }}>*</span>
-          </Typography>
-          <TextField
-            fullWidth
-            size="small"
-            value={draft.name}
-            onChange={(e) => {
-              onChange({ ...draft, name: e.target.value });
-              if (nameErrorShown) setNameErrorShown(null);
-            }}
-            error={Boolean(nameErrorShown)}
-            helperText={nameErrorShown ?? undefined}
-          />
         </Box>
 
         {draft.shape === '圓形' && (
@@ -2580,108 +2539,3 @@ function Field({
   );
 }
 
-function OrdersSection({ geofence }: { geofence: Geofence }) {
-  const theme = useTheme();
-  const orders = mockOrdersForGeofence(geofence);
-  const count = orders.length;
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mb: 1 }}>
-        <Typography sx={{ fontSize: 14, fontWeight: 600 }}>監控中訂單</Typography>
-        <Typography variant="footnote" sx={{ color: theme.palette.dasGrey.grey01 }}>
-          {count > 0 ? `共 ${count} 張` : '無'}
-        </Typography>
-      </Box>
-      {count === 0 ? (
-        <Typography variant="footnote" sx={{ color: theme.palette.dasGrey.grey01 }}>
-          目前沒有訂單綁定此圍籬
-        </Typography>
-      ) : (
-        <Box
-          sx={{
-            border: `1px solid ${theme.palette.dasGrey.grey04}`,
-            borderRadius: 1,
-            overflow: 'hidden',
-          }}
-        >
-          <Box
-            sx={{
-              maxHeight: 180,
-              overflow: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            {orders.map((id, i) => (
-              <Link
-                key={id}
-                href={`#/orders/${id}`}
-                underline="hover"
-                sx={{
-                  px: 1.5,
-                  py: 0.75,
-                  fontSize: 13,
-                  fontFamily:
-                    '"Roboto Mono", "SF Mono", Menlo, Consolas, monospace',
-                  color: theme.palette.dasPrimary.primary,
-                  borderTop:
-                    i === 0 ? undefined : `1px solid ${theme.palette.dasGrey.grey05}`,
-                  '&:hover': { bgcolor: theme.palette.dasPrimary.lite03 },
-                }}
-              >
-                {id}
-              </Link>
-            ))}
-          </Box>
-        </Box>
-      )}
-    </Box>
-  );
-}
-
-function AuditLogTable({ entries }: { entries: AuditEntry[] }) {
-  const theme = useTheme();
-  if (!entries || entries.length === 0) {
-    return (
-      <Typography variant="footnote" sx={{ color: theme.palette.dasGrey.grey01 }}>
-        尚無異動紀錄
-      </Typography>
-    );
-  }
-  return (
-    <Box
-      sx={{
-        border: `1px solid ${theme.palette.dasGrey.grey04}`,
-        borderRadius: 1,
-        overflow: 'hidden',
-      }}
-    >
-      <Table size="small">
-        <TableHead>
-          <TableRow sx={{ bgcolor: theme.palette.dasGrey.grey05 }}>
-            <TableCell sx={{ py: 0.75, fontSize: 11, fontWeight: 500 }}>時間</TableCell>
-            <TableCell sx={{ py: 0.75, fontSize: 11, fontWeight: 500 }}>人員</TableCell>
-            <TableCell sx={{ py: 0.75, fontSize: 11, fontWeight: 500 }}>角色</TableCell>
-            <TableCell sx={{ py: 0.75, fontSize: 11, fontWeight: 500 }}>摘要</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {entries.map((e, i) => (
-            <TableRow key={i}>
-              <TableCell sx={{ py: 0.75, fontSize: 11, whiteSpace: 'nowrap' }}>
-                {e.time}
-              </TableCell>
-              <TableCell sx={{ py: 0.75, fontSize: 11, whiteSpace: 'nowrap' }}>
-                {e.user}
-              </TableCell>
-              <TableCell sx={{ py: 0.75, fontSize: 11, whiteSpace: 'nowrap' }}>
-                {e.role}
-              </TableCell>
-              <TableCell sx={{ py: 0.75, fontSize: 11 }}>{e.summary}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Box>
-  );
-}

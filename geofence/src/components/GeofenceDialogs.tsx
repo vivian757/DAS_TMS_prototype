@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -15,7 +14,6 @@ import {
   Typography,
   useTheme,
 } from '@mui/material';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ToggleOnOutlinedIcon from '@mui/icons-material/ToggleOnOutlined';
 import ToggleOffOutlinedIcon from '@mui/icons-material/ToggleOffOutlined';
@@ -26,7 +24,6 @@ import {
   AuditEntry,
   centroidOf,
   GeofenceType,
-  mockOrdersForGeofence,
 } from '../data/mockGeofences';
 import MapPreview from './MapPreview';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
@@ -597,11 +594,7 @@ export function GeofenceFormDialog({
       </DialogActions>
     </Dialog>
     <EditImpactConfirmDialog
-      target={
-        pendingEdit && initial
-          ? { geofence: pendingEdit, orderCount: initial.usingOrderCount }
-          : null
-      }
+      open={Boolean(pendingEdit && initial)}
       onClose={() => setPendingEdit(null)}
       onConfirm={() => {
         if (pendingEdit) onSubmit(pendingEdit);
@@ -613,38 +606,93 @@ export function GeofenceFormDialog({
 }
 
 export function EditImpactConfirmDialog({
-  target,
+  open,
   onClose,
   onConfirm,
 }: {
-  target: { geofence: Geofence; orderCount: number } | null;
+  open: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
   const theme = useTheme();
-  if (!target) return null;
   return (
-    <Dialog open={Boolean(target)} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <WarningAmberIcon sx={{ color: theme.palette.dasOrange.main }} />
-        <Typography variant="h5Bold">確認更新圍籬</Typography>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth={false}
+      PaperProps={{ sx: { maxWidth: 600 } }}
+    >
+      <DialogTitle>
+        <Typography variant="h5Bold">圍籬變動將影響監控訂單的範圍</Typography>
       </DialogTitle>
       <DialogContent>
-        <Typography variant="body1" sx={{ mb: 1.5 }}>
-          圍籬「<b>{target.geofence.name}</b>」目前有{' '}
-          <b style={{ color: theme.palette.dasPrimary.dark01 }}>{target.orderCount}</b>{' '}
-          張監控中訂單，本次更新會套用至這些訂單。
-        </Typography>
-        <Typography variant="body2" sx={{ color: theme.palette.dasGrey.grey01 }}>
-          若半徑 / 頂點或中心點變動，可能改變車輛進出判斷結果，建議通知相關調度員。
-        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 1,
+            p: 1.5,
+            borderRadius: 1,
+            bgcolor: theme.palette.dasOrange.lite01,
+          }}
+        >
+          <InfoOutlinedIcon
+            sx={{
+              fontSize: 20,
+              color: theme.palette.dasOrange.main,
+              mt: '2px',
+              flexShrink: 0,
+            }}
+          />
+          <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+            變更圍籬地址或範圍，將改變車輛進場/出場的判斷結果，建議通知相關內部人員，並確認正在使用此圍籬的訂單是否需調整。
+          </Typography>
+        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} color="secondary">
+        <Button onClick={onClose} variant="outlined" color="secondary">
           取消
         </Button>
         <Button onClick={onConfirm} variant="contained" color="primary">
-          確認更新
+          確認
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+export function EditConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth={false}
+      PaperProps={{ sx: { maxWidth: 600 } }}
+    >
+      <DialogTitle>
+        <Typography variant="h5Bold">提醒</Typography>
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body1">
+          本次變更將覆蓋使用此圍籬的既存訂單，確定要繼續嗎?
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} variant="outlined" color="secondary">
+          取消
+        </Button>
+        <Button onClick={onConfirm} variant="contained" color="primary">
+          確認
         </Button>
       </DialogActions>
     </Dialog>
@@ -661,112 +709,47 @@ export function DeleteConfirmDialog({
   onConfirm: () => void;
 }) {
   const theme = useTheme();
-  const [loading, setLoading] = useState(false);
-  const [impact, setImpact] = useState<{ count: number } | null>(null);
-
-  useEffect(() => {
-    if (!target) {
-      setImpact(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setImpact(null);
-    const t = setTimeout(() => {
-      setImpact({ count: target.usingOrderCount });
-      setLoading(false);
-    }, 600);
-    return () => clearTimeout(t);
-  }, [target]);
-
   return (
-    <Dialog open={Boolean(target)} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open={Boolean(target)}
+      onClose={onClose}
+      fullWidth
+      maxWidth={false}
+      PaperProps={{ sx: { maxWidth: 600 } }}
+    >
       <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmberIcon sx={{ color: theme.palette.dasOrange.main }} />
-          <Typography variant="h5Bold">刪除圍籬「{target?.name}」？</Typography>
-        </Box>
+        <Typography variant="h5Bold">刪除圍籬</Typography>
       </DialogTitle>
-      <DialogContent dividers>
-        {loading ? (
-          <Box
+      <DialogContent>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 1,
+            p: 1.5,
+            borderRadius: 1,
+            bgcolor: theme.palette.dasOrange.lite01,
+          }}
+        >
+          <InfoOutlinedIcon
             sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
-              py: 2,
-              color: theme.palette.dasGrey.grey01,
+              fontSize: 20,
+              color: theme.palette.dasOrange.main,
+              mt: '2px',
+              flexShrink: 0,
             }}
-          >
-            <CircularProgress size={18} />
-            <Typography variant="body2">檢查受影響的進行中訂單⋯</Typography>
-          </Box>
-        ) : impact && impact.count > 0 ? (
-          <Box>
-            <Paper
-              sx={{
-                p: 2,
-                mb: 2,
-                bgcolor: theme.palette.dasOrange.lite01,
-                border: `1px solid ${theme.palette.dasOrange.dark01}`,
-                boxShadow: 'none',
-              }}
-            >
-              <Typography
-                variant="body1"
-                sx={{ color: theme.palette.dasOrange.dark01, fontWeight: 500 }}
-              >
-                此圍籬正被 {impact.count} 張進行中訂單使用
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{ color: theme.palette.dasOrange.dark01, mt: 0.5 }}
-              >
-                刪除後這些訂單將失去此圍籬的警戒範圍,請先確認不再需要此監控設定。
-              </Typography>
-            </Paper>
-            <Typography variant="body2" sx={{ color: theme.palette.dasGrey.grey01, mb: 1 }}>
-              受影響訂單(共 {impact.count} 張):
-            </Typography>
-            <Box
-              component="ul"
-              sx={{
-                m: 0,
-                pl: 3,
-                maxHeight: 240,
-                overflowY: 'auto',
-                border: `1px solid ${theme.palette.dasGrey.grey04}`,
-                borderRadius: 1,
-                py: 1,
-              }}
-            >
-              {(target ? mockOrdersForGeofence(target) : []).map((id) => (
-                <li key={id}>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontFamily:
-                        '"Roboto Mono", "SF Mono", Menlo, Consolas, monospace',
-                    }}
-                  >
-                    {id}
-                  </Typography>
-                </li>
-              ))}
-            </Box>
-          </Box>
-        ) : (
-          <Typography variant="body1">
-            這個圍籬目前沒有被任何進行中訂單使用，可以安全刪除。
+          />
+          <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+            刪除後資料無法復原，且正在使用所選圍籬的訂單將失去監控範圍。建議通知相關內部人員，並確認相關訂單是否需調整。
           </Typography>
-        )}
+        </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} color="secondary">
+        <Button onClick={onClose} variant="outlined" color="secondary">
           取消
         </Button>
-        <Button onClick={onConfirm} variant="contained" color="error" disabled={loading}>
-          確認刪除
+        <Button onClick={onConfirm} variant="contained" color="primary">
+          確認
         </Button>
       </DialogActions>
     </Dialog>
@@ -783,145 +766,48 @@ export function BatchDeleteConfirmDialog({
   onConfirm: () => void;
 }) {
   const theme = useTheme();
-  const [loading, setLoading] = useState(false);
-  const [impact, setImpact] = useState<
-    Array<{ geofence: Geofence; orders: string[] }> | null
-  >(null);
-
   const open = targets.length > 0;
-
-  useEffect(() => {
-    if (!open) {
-      setImpact(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setImpact(null);
-    const t = setTimeout(() => {
-      setImpact(
-        targets.map((g) => ({
-          geofence: g,
-          orders: (g.usingOrderCount ?? 0) > 0 ? mockOrdersForGeofence(g) : [],
-        })),
-      );
-      setLoading(false);
-    }, 600);
-    return () => clearTimeout(t);
-  }, [open, targets]);
-
-  const totalOrders = impact
-    ? impact.reduce((s, x) => s + x.orders.length, 0)
-    : 0;
-  const affectedGeofences = impact
-    ? impact.filter((x) => x.orders.length > 0)
-    : [];
-
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth={false}
+      PaperProps={{ sx: { maxWidth: 600 } }}
+    >
       <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmberIcon sx={{ color: theme.palette.dasOrange.main }} />
-          <Typography variant="h5Bold">
-            刪除 {targets.length} 個圍籬？
+        <Typography variant="h5Bold">刪除圍籬</Typography>
+      </DialogTitle>
+      <DialogContent>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 1,
+            p: 1.5,
+            borderRadius: 1,
+            bgcolor: theme.palette.dasOrange.lite01,
+          }}
+        >
+          <InfoOutlinedIcon
+            sx={{
+              fontSize: 20,
+              color: theme.palette.dasOrange.main,
+              mt: '2px',
+              flexShrink: 0,
+            }}
+          />
+          <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+            刪除後資料無法復原，且正在使用所選圍籬的訂單將失去監控範圍。建議通知相關內部人員，並確認相關訂單是否需調整。
           </Typography>
         </Box>
-      </DialogTitle>
-      <DialogContent dividers>
-        {loading ? (
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
-              py: 2,
-              color: theme.palette.dasGrey.grey01,
-            }}
-          >
-            <CircularProgress size={18} />
-            <Typography variant="body2">檢查受影響的進行中訂單⋯</Typography>
-          </Box>
-        ) : totalOrders > 0 ? (
-          <Box>
-            <Paper
-              sx={{
-                p: 2,
-                mb: 2,
-                bgcolor: theme.palette.dasOrange.lite01,
-                border: `1px solid ${theme.palette.dasOrange.dark01}`,
-                boxShadow: 'none',
-              }}
-            >
-              <Typography
-                variant="body1"
-                sx={{ color: theme.palette.dasOrange.dark01, fontWeight: 500 }}
-              >
-                此批次刪除會影響 {totalOrders} 張進行中訂單
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{ color: theme.palette.dasOrange.dark01, mt: 0.5 }}
-              >
-                刪除後這些訂單將失去對應圍籬的警戒範圍,請先確認不再需要此監控設定。
-              </Typography>
-            </Paper>
-            <Box
-              sx={{
-                maxHeight: 300,
-                overflowY: 'auto',
-                border: `1px solid ${theme.palette.dasGrey.grey04}`,
-                borderRadius: 1,
-                px: 2,
-                py: 1.5,
-              }}
-            >
-              {affectedGeofences.map((x, idx) => (
-                <Box
-                  key={x.geofence.id}
-                  sx={{ mb: idx === affectedGeofences.length - 1 ? 0 : 1.5 }}
-                >
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: theme.palette.dasGrey.grey01,
-                      mb: 0.5,
-                    }}
-                  >
-                    圍籬「<b style={{ color: theme.palette.dasDark.dark01 }}>
-                      {x.geofence.name}
-                    </b>」({x.orders.length} 張)
-                  </Typography>
-                  <Box component="ul" sx={{ m: 0, pl: 3 }}>
-                    {x.orders.map((id) => (
-                      <li key={id}>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontFamily:
-                              '"Roboto Mono", "SF Mono", Menlo, Consolas, monospace',
-                          }}
-                        >
-                          {id}
-                        </Typography>
-                      </li>
-                    ))}
-                  </Box>
-                </Box>
-              ))}
-            </Box>
-          </Box>
-        ) : (
-          <Typography variant="body1">
-            這 {targets.length} 個圍籬目前沒有被任何進行中訂單使用,可以安全刪除。
-          </Typography>
-        )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} color="secondary">
+        <Button onClick={onClose} variant="outlined" color="secondary">
           取消
         </Button>
-        <Button onClick={onConfirm} variant="contained" color="error" disabled={loading}>
-          確認刪除
+        <Button onClick={onConfirm} variant="contained" color="primary">
+          確認
         </Button>
       </DialogActions>
     </Dialog>
