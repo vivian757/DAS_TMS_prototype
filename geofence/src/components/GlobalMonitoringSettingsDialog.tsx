@@ -153,6 +153,17 @@ export default function GlobalMonitoringSettingsDialog({
         {/* 異常告警 */}
         <Box>
           <SectionTitle title="異常通知" />
+          <Typography
+            sx={{
+              fontSize: 13,
+              color: theme.palette.dasGrey.grey01,
+              lineHeight: 1.6,
+              mt: -0.5,
+              mb: 1.5,
+            }}
+          >
+            開啟後觸發的通知將發送至 TMS，並根據訂單實際設定的時間為準（業務類型「送」：預計配達開始/結束時間；「取」：預計取貨開始/結束時間）。
+          </Typography>
 
           <AlertTimeline
             earlyArrival={draft.alerts.earlyArrival}
@@ -168,14 +179,16 @@ export default function GlobalMonitoringSettingsDialog({
                 />
               }
               title="提早抵達"
-              calcExplain="觸發時機：預計配達/取貨開始時間 − 設定分鐘數。例如預計 10:00 開始，提早 10 分鐘 → 09:50 起若進場即觸發。"
+              calcExplain="通知條件：訂單預計配達/預計取貨開始時間 − 車輛進入圍籬時間 ≥ 設定分鐘數。例如預計 10:00 開始，設定 10 分鐘 → 09:50 起若進場即觸發。"
               renderSentence={(input) => (
                 <>
                   <Typography variant="body2">
-                    車輛比訂單「預計配達/取貨開始時間」提早
+                    車輛比訂單「預計開始時間」提早
                   </Typography>
                   {input}
-                  <Typography variant="body2">分鐘進場，則發送通知。</Typography>
+                  <Typography variant="body2">
+                    分鐘（以上）進場，則發送通知。
+                  </Typography>
                 </>
               )}
               enabled={draft.alerts.earlyArrival.enabled}
@@ -206,14 +219,16 @@ export default function GlobalMonitoringSettingsDialog({
                 />
               }
               title="可能會逾時"
-              calcExplain="觸發時機：預計配達/取貨結束時間 − 設定分鐘數，仍未進場時。例如預計 12:00 結束，提前 60 分鐘 → 11:00 起若仍未進場即觸發。"
+              calcExplain="通知條件：訂單預計配達/預計取貨結束時間 − 當前時間 ≤ 設定分鐘數，且車輛仍未進入圍籬。例如預計 12:00 結束，設定 60 分鐘 → 11:00 起若仍未進場即觸發。"
               renderSentence={(input) => (
                 <>
                   <Typography variant="body2">
-                    車輛於訂單「預計配達/取貨結束時間」前
+                    車輛於訂單「預計結束時間」前
                   </Typography>
                   {input}
-                  <Typography variant="body2">分鐘還沒進場，則發送通知。</Typography>
+                  <Typography variant="body2">
+                    分鐘還沒進場，則發送通知。
+                  </Typography>
                 </>
               )}
               enabled={draft.alerts.overtime.enabled}
@@ -244,10 +259,10 @@ export default function GlobalMonitoringSettingsDialog({
                 />
               }
               title="遲到"
-              calcExplain="觸發時機：超過預計配達/取貨結束時間且仍未進場時即觸發。"
+              calcExplain="通知條件：車輛進入圍籬時間 > 訂單預計配達/預計取貨結束時間。例如預計 12:00 結束，車輛 12:30 才進場即觸發。"
               renderSentence={() => (
                 <Typography variant="body2">
-                  車輛於訂單「預計配達/取貨結束時間」後才進場，則發送通知。
+                  車輛於訂單「預計結束時間」後才進場，則發送通知。
                 </Typography>
               )}
               enabled={draft.alerts.noShow.enabled}
@@ -322,7 +337,13 @@ function NumberInput({
         max,
         style: { textAlign: 'center', width: 36, padding: '6px 8px' },
       }}
-      sx={{ width: 64 }}
+      sx={{
+        width: 64,
+        '& .MuiOutlinedInput-root': { bgcolor: '#fff' },
+        '& .MuiOutlinedInput-root.Mui-disabled': {
+          bgcolor: 'transparent',
+        },
+      }}
     />
   );
 }
@@ -419,7 +440,11 @@ function DirectionCard({
               orderStatus: e.target.value as OrderStatusCode | '',
             })
           }
-          sx={{ minWidth: 132 }}
+          sx={{
+            minWidth: 132,
+            bgcolor: '#fff',
+            '&.Mui-disabled': { bgcolor: 'transparent' },
+          }}
           renderValue={(v) =>
             v ? (
               <span>{v}</span>
@@ -491,37 +516,17 @@ function AlertTimeline({
   const ROW_BOT = 26;
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{
-        p: 2,
-        mb: 1.5,
-        borderRadius: 1.5,
-        borderColor: theme.palette.dasGrey.grey04,
-        bgcolor: theme.palette.dasGrey.grey06,
-      }}
-    >
+    <Box sx={{ px: 0, py: 1, mb: 1.5 }}>
       <Typography
         sx={{
           display: 'block',
           fontWeight: 600,
           fontSize: 14,
           color: theme.palette.dasDark.dark01,
-          mb: 0.5,
-        }}
-      >
-        參考時間軸
-      </Typography>
-      <Typography
-        sx={{
-          display: 'block',
-          fontSize: 13,
-          color: theme.palette.dasGrey.grey01,
-          lineHeight: 1.6,
           mb: 1.5,
         }}
       >
-        開啟後將發送通知至 TMS，並根據訂單實際設定的時間為準（業務類型「送」：預計配達開始/結束時間；「取」：預計取貨開始/結束時間）。
+        參考時間軸
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
         {items.map((it, i) => {
@@ -632,7 +637,7 @@ function AlertTimeline({
                     height: 10,
                     borderRadius: '50%',
                     bgcolor: dotColor,
-                    border: `2px solid ${theme.palette.dasGrey.grey06}`,
+                    border: `2px solid #fff`,
                     boxShadow: `0 0 0 1px ${dotColor}`,
                     zIndex: 1,
                   }}
@@ -667,7 +672,7 @@ function AlertTimeline({
           );
         })}
       </Box>
-    </Paper>
+    </Box>
   );
 }
 

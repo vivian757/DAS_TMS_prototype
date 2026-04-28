@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import MapOutlinedIcon from '@mui/icons-material/MapOutlined';
 import ViewSidebarOutlinedIcon from '@mui/icons-material/ViewSidebarOutlined';
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 
 const SIDEBAR_WIDTH = 240;
 const HEADER_HEIGHT = 64;
@@ -64,7 +65,9 @@ export default function AppShell() {
       ? '方案 A · 地圖為主'
       : pathname === '/b'
         ? '方案 B · 表格 + 地圖並陳'
-        : '電子圍籬探索';
+        : pathname.startsWith('/order')
+          ? '訂單詳情 · 電子圍籬牌卡'
+          : '電子圍籬探索';
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#F0F1F3' }}>
@@ -115,6 +118,25 @@ export default function AppShell() {
             icon={<ViewSidebarOutlinedIcon sx={{ fontSize: 20 }} />}
             label="方案 B"
             sublabel="表格 + 地圖並陳"
+          />
+
+          <Typography
+            variant="footnote"
+            sx={{
+              display: 'block',
+              color: theme.palette.dasGrey.grey01,
+              pl: 3,
+              pb: 0.5,
+              pt: 2,
+            }}
+          >
+            訂單詳情探索
+          </Typography>
+          <SidebarItem
+            to="/order"
+            icon={<ReceiptLongOutlinedIcon sx={{ fontSize: 20 }} />}
+            label="訂單詳情"
+            sublabel="電子圍籬牌卡"
           />
         </Box>
         <Box sx={{ mt: 'auto', p: 2 }}>

@@ -5,6 +5,7 @@ import Landing from './pages/Landing';
 import PrototypeA from './pages/PrototypeA';
 import PrototypeB from './pages/PrototypeB';
 import BatchImportPage from './pages/BatchImportPage';
+import OrderDetailPage from './pages/OrderDetailPage';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/b" element={<PrototypeB />} />
           <Route path="/b-1" element={<Navigate to="/b" replace />} />
           <Route path="/b-2" element={<Navigate to="/b" replace />} />
+          <Route path="/order" element={<OrderDetailPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

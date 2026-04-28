@@ -68,6 +68,41 @@ const INITIAL_ROWS: ImportRow[] = [
   { rowNum: 15, name: '家樂福_台中倉', type: '圓形', address: '台中市西屯區中港路三段 136 號', radius: '500', vertices: '台中市西屯區中港路 1 號, 台中市西屯區中港路 50 號, 台中市西屯區中港路 88 號', errors: [] },
   // 16: 多邊形但有填中心點 + 半徑（多餘欄位忽略，仍成功）
   { rowNum: 16, name: '基隆港集散區', type: '多邊形', address: '基隆市中正區中正路 1 號', radius: '400', vertices: '基隆市中正區中正路 1 號, 基隆市中正區中正路 50 號, 基隆市中正區中正路 80 號', errors: [] },
+  // 17–50: 多筆成功案例（讓表格有量感）
+  { rowNum: 17, name: '7-11_新竹店', type: '圓形', address: '新竹市東區光復路一段 200 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 18, name: '全家_板橋店', type: '圓形', address: '新北市板橋區民生路 50 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 19, name: 'OK_萬華店', type: '圓形', address: '台北市萬華區康定路 100 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 20, name: '嘉里大榮_汐止倉', type: '圓形', address: '新北市汐止區新台五路一段 81 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 21, name: '黑貓_桃園分倉', type: '圓形', address: '桃園市桃園區中山路 1000 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 22, name: '統一速達_台南倉', type: '圓形', address: '台南市永康區中山南路 100 號', radius: '300', vertices: '', errors: [] },
+  { rowNum: 23, name: '僑力_中壢廠', type: '多邊形', address: '', radius: '', vertices: '桃園市中壢區中正路 1 號, 桃園市中壢區中正路 30 號, 桃園市中壢區中正路 50 號, 桃園市中壢區中正路 80 號', errors: [] },
+  { rowNum: 24, name: '大潤發_台中分倉', type: '圓形', address: '台中市西屯區中港路二段 1 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 25, name: '家樂福_桃園倉', type: '圓形', address: '桃園市八德區介壽路 50 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 26, name: 'COSTCO_新莊', type: '圓形', address: '新北市新莊區五工二路 99 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 27, name: '鴻海_土城廠', type: '多邊形', address: '', radius: '', vertices: '新北市土城區中山路 1 號, 新北市土城區中山路 30 號, 新北市土城區中山路 60 號, 新北市土城區中山路 90 號', errors: [] },
+  { rowNum: 28, name: '廣達_龜山廠', type: '多邊形', address: '', radius: '', vertices: '桃園市龜山區文化一路 1 號, 桃園市龜山區文化二路 5 號, 桃園市龜山區文化三路 8 號, 桃園市龜山區文化四路 12 號', errors: [] },
+  { rowNum: 29, name: '仁寶_平鎮廠', type: '多邊形', address: '', radius: '', vertices: '桃園市平鎮區工業路 1 號, 桃園市平鎮區工業路 30 號, 桃園市平鎮區工業路 60 號, 桃園市平鎮區工業路 90 號', errors: [] },
+  { rowNum: 30, name: '台塑_麥寮港區', type: '多邊形', address: '', radius: '', vertices: '雲林縣麥寮鄉台塑工業園區 1 號, 雲林縣麥寮鄉台塑工業園區 50 號, 雲林縣麥寮鄉台塑工業園區 100 號, 雲林縣麥寮鄉台塑工業園區 150 號, 雲林縣麥寮鄉台塑工業園區 200 號', errors: [] },
+  { rowNum: 31, name: '中油_高雄煉油廠', type: '多邊形', address: '', radius: '', vertices: '高雄市楠梓區高楠公路 1 號, 高雄市楠梓區高楠公路 50 號, 高雄市楠梓區高楠公路 100 號, 高雄市楠梓區高楠公路 150 號', errors: [] },
+  { rowNum: 32, name: '7-11_天母店', type: '圓形', address: '台北市士林區天母西路 50 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 33, name: '全家_中和店', type: '圓形', address: '新北市中和區景平路 200 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 34, name: 'Hi-Life_中正店', type: '圓形', address: '台北市中正區忠孝東路一段 50 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 35, name: '萊爾富_文山店', type: '圓形', address: '台北市文山區木柵路二段 100 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 36, name: '屈臣氏_信義店', type: '圓形', address: '台北市信義區忠孝東路四段 100 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 37, name: '康是美_大安店', type: '圓形', address: '台北市大安區忠孝東路四段 200 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 38, name: '寶雅_南港店', type: '圓形', address: '台北市南港區三重路 19 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 39, name: '美廉社_松山店', type: '圓形', address: '台北市松山區八德路四段 100 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 40, name: '蝦皮店到店_南港店', type: '圓形', address: '台北市南港區忠孝東路六段 100 號', radius: '200', vertices: '', errors: [] },
+  { rowNum: 41, name: '露天倉儲_內湖倉', type: '圓形', address: '台北市內湖區堤頂大道二段 100 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 42, name: 'momo_中和倉', type: '圓形', address: '新北市中和區中山路二段 200 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 43, name: 'PChome_汐止倉', type: '圓形', address: '新北市汐止區大同路二段 100 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 44, name: '蝦皮_樹林倉', type: '圓形', address: '新北市樹林區中山路一段 200 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 45, name: 'Yahoo_新莊物流', type: '圓形', address: '新北市新莊區瓊林路 1 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 46, name: '樂天_松山倉', type: '圓形', address: '台北市松山區南京東路四段 50 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 47, name: '黑貓_新竹分倉', type: '圓形', address: '新竹市東區慈雲路 100 號', radius: '500', vertices: '', errors: [] },
+  { rowNum: 48, name: '統一速達_台中倉', type: '圓形', address: '台中市西屯區工業區一路 1 號', radius: '300', vertices: '', errors: [] },
+  { rowNum: 49, name: '嘉里大榮_花蓮倉', type: '圓形', address: '花蓮縣花蓮市中山路 100 號', radius: '300', vertices: '', errors: [] },
+  { rowNum: 50, name: '大榮_台東倉', type: '圓形', address: '台東縣台東市更生路 200 號', radius: '300', vertices: '', errors: [] },
 ];
 
 function fieldHasError(
@@ -99,6 +134,7 @@ export default function BatchImportPage() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [rows, setRows] = useState<ImportRow[]>([]);
+  const [highlightedRow, setHighlightedRow] = useState<number | null>(null);
 
   const successCount = useMemo(
     () => rows.filter((r) => r.errors.length === 0).length,
@@ -142,6 +178,16 @@ export default function BatchImportPage() {
 
   function handleDeleteRow(rowNum: number) {
     setRows((prev) => prev.filter((r) => r.rowNum !== rowNum));
+  }
+
+  function handleAnchorRow(rowNum: number) {
+    const el = document.getElementById(`bi-row-${rowNum}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedRow(rowNum);
+    window.setTimeout(() => {
+      setHighlightedRow((cur) => (cur === rowNum ? null : cur));
+    }, 1600);
   }
 
   function handleCellChange(
@@ -447,7 +493,26 @@ export default function BatchImportPage() {
                       lineHeight: 1.7,
                     }}
                   >
-                    第 {g.rowNums.join(', ')} 列：{g.message}
+                    第{' '}
+                    {g.rowNums.map((n, idx) => (
+                      <Box
+                        key={n}
+                        component="span"
+                        onClick={() => handleAnchorRow(n)}
+                        sx={{
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          textUnderlineOffset: '2px',
+                          fontWeight: 500,
+                          '&:hover': {
+                            color: theme.palette.error.dark,
+                          },
+                        }}
+                      >
+                        {idx > 0 ? `, ${n}` : n}
+                      </Box>
+                    ))}{' '}
+                    列：{g.message}
                   </Typography>
                 ))}
               </Box>
@@ -501,11 +566,21 @@ export default function BatchImportPage() {
                     p: 0,
                     verticalAlign: 'middle',
                   };
+                  const isHighlighted = highlightedRow === row.rowNum;
                   return (
                     <TableRow
                       key={row.rowNum}
+                      id={`bi-row-${row.rowNum}`}
                       sx={{
-                        '&:hover': { bgcolor: theme.palette.dasGrey.grey06 },
+                        transition: 'background-color 0.3s',
+                        bgcolor: isHighlighted
+                          ? theme.palette.dasPrimary.lite03
+                          : undefined,
+                        '&:hover': {
+                          bgcolor: isHighlighted
+                            ? theme.palette.dasPrimary.lite02
+                            : theme.palette.dasGrey.grey06,
+                        },
                       }}
                     >
                       <TableCell sx={{ py: 0.5 }}>
