@@ -62,7 +62,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import SensorsIcon from '@mui/icons-material/Sensors';
 
-import { mockGeofences, Geofence, guessAddress, AuditEntry, centroidOf } from '../data/mockGeofences';
+import { mockGeofences, Geofence, guessAddress, formatLatLng, AuditEntry, centroidOf } from '../data/mockGeofences';
 import { mockEvents } from '../data/mockEvents';
 import {
   DeleteConfirmDialog,
@@ -86,6 +86,63 @@ const TAIWAN_BOUNDS: L.LatLngBoundsLiteral = [
 
 type DrawerMode = 'list' | 'detail' | 'edit' | 'create';
 
+// 偵測自交叉：回傳所有「有交叉」的邊在 edges 陣列中的 index
+// edges：相鄰座標構成的線段，閉合時補上最後 → 第 1 個的邊
+function findCrossingEdges(
+  vertices: [number, number][],
+  closed: boolean,
+): Set<number> {
+  const crossing = new Set<number>();
+  const n = vertices.length;
+  if (n < 4) return crossing;
+
+  // [fromIdx, toIdx] 配對
+  const edges: [number, number][] = [];
+  for (let i = 0; i < n - 1; i++) edges.push([i, i + 1]);
+  if (closed) edges.push([n - 1, 0]);
+
+  // 把 lat 視作 y、lng 視作 x 做平面座標的方向測試（小區域 ok）
+  const ccw = (
+    A: [number, number],
+    B: [number, number],
+    C: [number, number],
+  ) =>
+    (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0]);
+
+  function segIntersect(
+    p1: [number, number],
+    p2: [number, number],
+    p3: [number, number],
+    p4: [number, number],
+  ) {
+    return (
+      ccw(p1, p3, p4) !== ccw(p2, p3, p4) &&
+      ccw(p1, p2, p3) !== ccw(p1, p2, p4)
+    );
+  }
+
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const [ai, bi] = edges[i];
+      const [aj, bj] = edges[j];
+      // 共用端點 → 跳過（不算交叉）
+      if (ai === aj || ai === bj || bi === aj || bi === bj) continue;
+      if (
+        segIntersect(
+          vertices[ai],
+          vertices[bi],
+          vertices[aj],
+          vertices[bj],
+        )
+      ) {
+        crossing.add(i);
+        crossing.add(j);
+      }
+    }
+  }
+  return crossing;
+}
+
 interface Draft {
   name: string;
   address: string;
@@ -94,6 +151,7 @@ interface Draft {
   radius: number;
   center: [number, number] | null;
   vertices: [number, number][];
+  polygonClosed: boolean;
 }
 
 // Focus marker — used for both edit-in-progress and create-in-progress.
@@ -151,7 +209,7 @@ function FitToMarkers({
         return;
       }
       if (draftCenter) {
-        // 頂點尚未開始，但已透過地址定位 → focus 並放大到該位置
+        // 座標尚未開始，但已透過地址定位 → focus 並放大到該位置
         map.flyTo(draftCenter, 16, { duration: 0.5 });
         return;
       }
@@ -218,6 +276,9 @@ export default function PrototypeA() {
 
   const [fitTrigger, setFitTrigger] = useState(0);
   const [deleting, setDeleting] = useState<Geofence | null>(null);
+  const [polygonVariant, setPolygonVariant] = useState<
+    'A' | 'B' | 'C'
+  >('A');
   const [toggling, setToggling] = useState<{ geofence: Geofence; nextEnabled: boolean } | null>(null);
   const [pendingEdit, setPendingEdit] = useState<{
     updated: Geofence;
@@ -355,6 +416,7 @@ export default function PrototypeA() {
       radius: g.radius || 200,
       center: [g.lat, g.lng],
       vertices: g.vertices ? [...g.vertices] : [],
+      polygonClosed: g.type === '多邊形' && (g.vertices?.length ?? 0) >= 3,
     });
   }
 
@@ -369,6 +431,7 @@ export default function PrototypeA() {
       radius: 200,
       center: opts?.center ?? null,
       vertices: [],
+      polygonClosed: false,
     });
   }
 
@@ -386,6 +449,8 @@ export default function PrototypeA() {
     setDraft((d) => {
       if (!d) return d;
       if (d.shape === '多邊形') {
+        // 已閉合 → 不允許再加座標
+        if (d.polygonClosed) return d;
         return { ...d, vertices: [...d.vertices, [lat, lng]] };
       }
       return {
@@ -407,6 +472,7 @@ export default function PrototypeA() {
     if (!draft) return;
     if (draft.shape === '圓形' && !draft.center) return;
     if (draft.shape === '多邊形' && draft.vertices.length < 3) return;
+    if (draft.shape === '多邊形' && !draft.polygonClosed) return;
 
     const today = '2026-04-23';
     const nowTime = `${today} 10:00`;
@@ -428,7 +494,7 @@ export default function PrototypeA() {
       } else if (
         JSON.stringify(focused.vertices ?? []) !== JSON.stringify(draft.vertices)
       ) {
-        summary = `更新多邊形頂點（${focused.vertices?.length ?? 0} → ${draft.vertices.length} 個）`;
+        summary = `更新多邊形座標（${focused.vertices?.length ?? 0} → ${draft.vertices.length} 個）`;
       }
       if (focused.name !== draft.name.trim()) summary = '更新圍籬名稱';
       const newEntry: AuditEntry = { time: nowTime, user: actor, role: '調度員', summary };
@@ -579,10 +645,20 @@ export default function PrototypeA() {
           <FormDrawer
             mode={mode}
             draft={draft}
+            polygonVariant={polygonVariant}
             existingNames={data
               .filter((g) => !(mode === 'edit' && g.id === focusId))
               .map((g) => g.name)}
-            onChange={setDraft}
+            onChange={(next) => {
+              if (next.shape === '多邊形') {
+                if (next.vertices.length < 3) {
+                  next = { ...next, polygonClosed: false };
+                } else if (polygonVariant === 'A') {
+                  next = { ...next, polygonClosed: true };
+                }
+              }
+              setDraft(next);
+            }}
             onCancel={cancelForm}
             onCommit={commitForm}
           />
@@ -676,7 +752,7 @@ export default function PrototypeA() {
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#5C5F61' }}>
                     {g.type === '多邊形'
-                      ? `${g.vertices?.length ?? 0} 個頂點`
+                      ? `${g.vertices?.length ?? 0} 個座標`
                       : `半徑 ${g.radius}m`}
                   </Typography>
                 </Box>
@@ -735,7 +811,7 @@ export default function PrototypeA() {
                       draft.center[1],
                     ).distanceTo(pos);
                     const clamped = Math.max(
-                      50,
+                      300,
                       Math.min(5000, Math.round(distance)),
                     );
                     setDraft((d) => (d ? { ...d, radius: clamped } : d));
@@ -747,8 +823,32 @@ export default function PrototypeA() {
           {isFormMode && draft?.shape === '多邊形' && (
             <PolygonDrawLayer
               vertices={draft.vertices}
+              closed={draft.polygonClosed}
+              autoCloseOnThird={polygonVariant === 'A'}
+              showVertexNumbers={polygonVariant === 'A'}
+              dashedClosingEdge={polygonVariant === 'B'}
+              fillRule={polygonVariant === 'A' ? 'evenodd' : 'nonzero'}
+              insertOnEdge={polygonVariant === 'C'}
+              crossingEdges={
+                polygonVariant === 'C'
+                  ? findCrossingEdges(draft.vertices, draft.polygonClosed)
+                  : undefined
+              }
               onChange={(v) =>
-                setDraft((d) => (d ? { ...d, vertices: v } : d))
+                setDraft((d) => {
+                  if (!d) return d;
+                  const next = { ...d, vertices: v };
+                  if (v.length < 3) next.polygonClosed = false;
+                  else if (polygonVariant === 'A') next.polygonClosed = true;
+                  return next;
+                })
+              }
+              onClose={() =>
+                setDraft((d) =>
+                  d && d.vertices.length >= 3
+                    ? { ...d, polygonClosed: true }
+                    : d,
+                )
               }
               color={theme.palette.dasPrimary.dark01}
             />
@@ -950,6 +1050,91 @@ export default function PrototypeA() {
           </Paper>
         )}
 
+        {/* Demo: 多邊形邏輯切換（僅多邊形畫面顯示） */}
+        {isFormMode && draft?.shape === '多邊形' && (
+          <Paper
+            sx={{
+              position: 'absolute',
+              top: 16,
+              left: 16,
+              p: 1,
+              zIndex: 500,
+              borderRadius: 1.5,
+              boxShadow: '0px 2px 6px rgba(0,0,0,0.2)',
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: theme.palette.dasGrey.grey01,
+                px: 0.5,
+                mb: 0.5,
+                letterSpacing: 0.5,
+                textTransform: 'uppercase',
+              }}
+            >
+              Demo · 多邊形邏輯
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {(['A', 'B', 'C'] as const).map((v) => {
+                const active = polygonVariant === v;
+                const label =
+                  v === 'A'
+                    ? 'A 原始版'
+                    : v === 'B'
+                      ? 'B 範圍聯集'
+                      : 'C 交叉提示+任意插入';
+                return (
+                  <Button
+                    key={v}
+                    size="small"
+                    onClick={() => {
+                      setPolygonVariant(v);
+                      if (v === 'A') {
+                        setDraft((d) =>
+                          d && d.shape === '多邊形' && d.vertices.length >= 3
+                            ? { ...d, polygonClosed: true }
+                            : d,
+                        );
+                      } else if (v === 'B') {
+                        // 切到 B：解開 closed 狀態，讓用戶看到虛線預覽 + 完成按鈕
+                        setDraft((d) =>
+                          d && d.shape === '多邊形'
+                            ? { ...d, polygonClosed: false }
+                            : d,
+                        );
+                      }
+                    }}
+                    variant={active ? 'contained' : 'text'}
+                    sx={{
+                      textTransform: 'none',
+                      px: 1.25,
+                      py: 0.5,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      minWidth: 0,
+                      bgcolor: active
+                        ? theme.palette.dasPrimary.primary
+                        : 'transparent',
+                      color: active
+                        ? '#fff'
+                        : theme.palette.dasGrey.grey01,
+                      '&:hover': {
+                        bgcolor: active
+                          ? theme.palette.dasPrimary.dark01
+                          : theme.palette.dasGrey.grey06,
+                      },
+                    }}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </Box>
+          </Paper>
+        )}
+
         {/* Bottom-center strip: shape toolbar (create mode) + hint (by shape) */}
         {isFormMode && draft && (
           <Box
@@ -1000,21 +1185,69 @@ export default function PrototypeA() {
                   boxShadow: '0px 2px 8px rgba(0,0,0,0.3)',
                 }}
               >
-                <InfoOutlinedIcon sx={{ fontSize: 16, color: '#fff' }} />
-                <Typography variant="body2" sx={{ color: '#fff', fontWeight: 500 }}>
-                  已有 {draft.vertices.length} 個頂點（拖曳頂點移動位置 · 點擊右鍵刪除頂點）
+                <InfoOutlinedIcon sx={{ fontSize: 16, color: '#fff', flexShrink: 0 }} />
+                <Typography
+                  variant="body2"
+                  sx={{ color: '#fff', fontWeight: 500, whiteSpace: 'nowrap' }}
+                >
+                  {(() => {
+                    const n = draft.vertices.length;
+                    if (polygonVariant === 'C') {
+                      const crossingCount = findCrossingEdges(
+                        draft.vertices,
+                        draft.polygonClosed,
+                      ).size;
+                      if (crossingCount > 0) {
+                        return `${n} 個座標 · ⚠ 圍籬邊線有交叉，請拖移座標調整`;
+                      }
+                    }
+                    if (polygonVariant === 'A') {
+                      return `${n} 個座標（拖曳座標調整位置 · 右鍵刪除座標）`;
+                    }
+                    return `${n} 個座標（拖曳座標調整位置 · 右鍵刪除座標・點擊第一個點即可閉合）`;
+                  })()}
                 </Typography>
                 <Box sx={{ width: '1px', height: 20, bgcolor: 'rgba(255,255,255,0.3)', mx: 0.5 }} />
+                {polygonVariant === 'B' &&
+                  draft.vertices.length >= 3 &&
+                  !draft.polygonClosed && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<CheckIcon sx={{ fontSize: 16 }} />}
+                      onClick={() =>
+                        setDraft((d) => (d ? { ...d, polygonClosed: true } : d))
+                      }
+                      sx={{
+                        bgcolor: theme.palette.dasPrimary.primary,
+                        color: '#fff',
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        px: 1.5,
+                        boxShadow: 'none',
+                        '&:hover': {
+                          bgcolor: theme.palette.dasPrimary.dark01,
+                          boxShadow: 'none',
+                        },
+                      }}
+                    >
+                      完成
+                    </Button>
+                  )}
                 <Button
                   size="small"
                   startIcon={<RestartAltIcon sx={{ fontSize: 16 }} />}
                   onClick={() =>
-                    setDraft((d) => (d ? { ...d, vertices: [] } : d))
+                    setDraft((d) =>
+                      d ? { ...d, vertices: [], polygonClosed: false } : d,
+                    )
                   }
                   disabled={draft.vertices.length === 0}
                   sx={{
                     color: '#fff',
-                    minWidth: 0,
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                    px: 1.25,
                     '&:disabled': { color: 'rgba(255,255,255,0.35)' },
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
                   }}
@@ -1629,7 +1862,7 @@ function BrowseList({
                                 key={idx}
                                 sx={{ fontSize: 12, lineHeight: 1.6, display: 'block' }}
                               >
-                                {idx + 1}. {a}
+                                {a}
                               </Typography>
                             ))}
                           </Box>
@@ -1662,7 +1895,7 @@ function BrowseList({
                   <Chip
                     label={
                       g.type === '多邊形'
-                        ? `${g.vertices?.length ?? 0} 個頂點`
+                        ? `${g.vertices?.length ?? 0} 個座標`
                         : `半徑 ${g.radius}m`
                     }
                     size="small"
@@ -1730,27 +1963,32 @@ function FocusedDetail({
               variant="footnote"
               sx={{ display: 'block', color: theme.palette.dasGrey.grey01, mb: 0.5 }}
             >
-              頂點地址（{g.vertices?.length ?? 0} 個）
+              座標點（{g.vertices?.length ?? 0} 個）
             </Typography>
             {g.vertices && g.vertices.length > 0 ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                 {g.vertices.map((v, i) => (
                   <Box
                     key={i}
-                    sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}
+                    sx={{ display: 'flex', flexDirection: 'column' }}
                   >
                     <Typography
-                      variant="body2"
+                      variant="body1"
+                      sx={{ color: theme.palette.dasDark.dark01 }}
+                    >
+                      {guessAddress(v[0], v[1])}
+                    </Typography>
+                    <Typography
+                      variant="caption"
                       sx={{
                         color: theme.palette.dasGrey.grey01,
-                        minWidth: 20,
-                        flexShrink: 0,
+                        fontFamily:
+                          'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+                        fontSize: 11,
+                        lineHeight: 1.4,
                       }}
                     >
-                      {i + 1}.
-                    </Typography>
-                    <Typography variant="body1">
-                      {guessAddress(v[0], v[1])}
+                      {formatLatLng(v[0], v[1])}
                     </Typography>
                   </Box>
                 ))}
@@ -1797,6 +2035,7 @@ function FormDrawer({
   mode,
   draft,
   existingNames,
+  polygonVariant,
   onChange,
   onCancel,
   onCommit,
@@ -1804,6 +2043,7 @@ function FormDrawer({
   mode: 'edit' | 'create';
   draft: Draft;
   existingNames: string[];
+  polygonVariant: 'A' | 'B' | 'C';
   onChange: (d: Draft) => void;
   onCancel: () => void;
   onCommit: () => void;
@@ -1817,6 +2057,9 @@ function FormDrawer({
   const prevVertexCountRef = useRef(draft.vertices.length);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
+  // B / C / D：順序非用戶主訴 → 隱藏序號 / drag handle / 重排功能（只有 A 保留）
+  const hideOrderUI = polygonVariant !== 'A';
+
   useEffect(() => {
     if (
       editingVertexIndex !== null &&
@@ -1827,7 +2070,7 @@ function FormDrawer({
     }
   }, [draft.vertices.length, editingVertexIndex]);
 
-  // 使用者還沒碰過輸入欄位時，若直接在地圖上點擊加入第一個頂點，
+  // 使用者還沒碰過輸入欄位時，若直接在地圖上點擊加入第一個座標，
   // 就清掉預設那個空輸入列（避免畫面多出一個沒人要用的輸入框）。
   useEffect(() => {
     const prev = prevVertexCountRef.current;
@@ -1844,7 +2087,7 @@ function FormDrawer({
     prevVertexCountRef.current = cur;
   }, [draft.vertices.length, userTouchedInput, vertexInputs]);
 
-  // 已確認頂點 + 輸入列全被清空時，至少保留一個空輸入列，
+  // 已確認座標 + 輸入列全被清空時，至少保留一個空輸入列，
   // 讓使用者能繼續操作。
   useEffect(() => {
     if (
@@ -1871,7 +2114,7 @@ function FormDrawer({
     }
     const codeSum = Array.from(trimmed).reduce((s, c) => s + c.charCodeAt(0), 0);
     if (anchor) {
-      // 有 anchor（上一個頂點）→ 於其周圍 ±0.008° 取點，頂點自然成群
+      // 有 anchor（上一個座標）→ 於其周圍 ±0.008° 取點，座標自然成群
       const offsetLat = ((codeSum % 160) - 80) / 10000;
       const offsetLng = ((codeSum % 140) - 70) / 10000;
       return [anchor[0] + offsetLat, anchor[1] + offsetLng];
@@ -2070,7 +2313,13 @@ function FormDrawer({
             size="small"
             fullWidth
             onChange={(_, v) => {
-              if (v === '圓形' || v === '多邊形') onChange({ ...draft, shape: v });
+              if (v === '圓形' || v === '多邊形') {
+                onChange({
+                  ...draft,
+                  shape: v,
+                  polygonClosed: v === '多邊形' ? draft.polygonClosed : false,
+                });
+              }
             }}
             sx={{
               '& .MuiToggleButton-root': {
@@ -2199,9 +2448,9 @@ function FormDrawer({
                 onChange={(e) => {
                   const n = parseInt(e.target.value, 10);
                   if (!isFinite(n)) return;
-                  onChange({ ...draft, radius: Math.max(50, Math.min(5000, n)) });
+                  onChange({ ...draft, radius: Math.max(300, Math.min(5000, n)) });
                 }}
-                inputProps={{ min: 50, max: 5000, step: 10, style: { textAlign: 'right' } }}
+                inputProps={{ min: 300, max: 5000, step: 10, style: { textAlign: 'right' } }}
                 sx={{ width: 90 }}
               />
               <Typography variant="body1" sx={{ ml: 0.75, color: theme.palette.dasGrey.grey01 }}>
@@ -2210,12 +2459,12 @@ function FormDrawer({
             </Box>
             <Slider
               value={draft.radius}
-              min={50}
+              min={300}
               max={5000}
               step={50}
               onChange={(_, v) => onChange({ ...draft, radius: v as number })}
               marks={[
-                { value: 50, label: '50m' },
+                { value: 300, label: '300m' },
                 { value: 1000, label: '1km' },
                 { value: 5000, label: '5km' },
               ]}
@@ -2231,7 +2480,7 @@ function FormDrawer({
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
               <Typography variant="headline" sx={{ color: theme.palette.dasGrey.grey01 }}>
-                頂點地址 <span style={{ color: theme.palette.dasPrimary.primary }}>*</span>
+                座標點 <span style={{ color: theme.palette.dasPrimary.primary }}>*</span>
               </Typography>
               <Typography
                 variant="footnote"
@@ -2270,7 +2519,7 @@ function FormDrawer({
                   lineHeight: 1.5,
                 }}
               >
-                依序輸入頂點地址，按下加入後地圖會自動定位該頂點，並連成多邊形邊界。也可直接於地圖上點擊加入。
+                依序輸入座標點，按下加入後地圖會自動定位該座標，並連成多邊形邊界。也可直接於地圖上點擊加入。
               </Typography>
             </Box>
 
@@ -2281,17 +2530,21 @@ function FormDrawer({
                     key={`edit-${i}`}
                     sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                   >
-                    <Box sx={{ width: 18, flexShrink: 0 }} />
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: theme.palette.dasGrey.grey01,
-                        minWidth: 20,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {i + 1}.
-                    </Typography>
+                    {!hideOrderUI && (
+                      <>
+                        <Box sx={{ width: 18, flexShrink: 0 }} />
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: theme.palette.dasGrey.grey01,
+                            minWidth: 20,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {i + 1}.
+                        </Typography>
+                      </>
+                    )}
                     <TextField
                       fullWidth
                       size="small"
@@ -2328,11 +2581,23 @@ function FormDrawer({
                 ) : (
                   <Box
                     key={`committed-${i}`}
-                    draggable={editingVertexIndex === null}
-                    onDragStart={(e) => handleVertexDragStart(e, i)}
-                    onDragOver={handleVertexDragOver}
-                    onDrop={(e) => handleVertexDrop(e, i)}
-                    onDragEnd={handleVertexDragEnd}
+                    draggable={!hideOrderUI && editingVertexIndex === null}
+                    onDragStart={
+                      !hideOrderUI
+                        ? (e) => handleVertexDragStart(e, i)
+                        : undefined
+                    }
+                    onDragOver={
+                      !hideOrderUI ? handleVertexDragOver : undefined
+                    }
+                    onDrop={
+                      !hideOrderUI
+                        ? (e) => handleVertexDrop(e, i)
+                        : undefined
+                    }
+                    onDragEnd={
+                      !hideOrderUI ? handleVertexDragEnd : undefined
+                    }
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
@@ -2342,56 +2607,79 @@ function FormDrawer({
                       transition: 'opacity 120ms',
                     }}
                   >
+                    {!hideOrderUI && (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: theme.palette.dasGrey.grey02,
+                          cursor: editingVertexIndex === null ? 'grab' : 'default',
+                          '&:active': {
+                            cursor: editingVertexIndex === null ? 'grabbing' : 'default',
+                          },
+                          flexShrink: 0,
+                        }}
+                        aria-label="拖曳調整順序"
+                      >
+                        <DragIndicatorIcon sx={{ fontSize: 18 }} />
+                      </Box>
+                    )}
+                    {!hideOrderUI && (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: theme.palette.dasGrey.grey01,
+                          minWidth: 20,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {i + 1}.
+                      </Typography>
+                    )}
                     <Box
                       sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        color: theme.palette.dasGrey.grey02,
-                        cursor: editingVertexIndex === null ? 'grab' : 'default',
-                        '&:active': {
-                          cursor: editingVertexIndex === null ? 'grabbing' : 'default',
-                        },
-                        flexShrink: 0,
-                      }}
-                      aria-label="拖曳調整順序"
-                    >
-                      <DragIndicatorIcon sx={{ fontSize: 18 }} />
-                    </Box>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: theme.palette.dasGrey.grey01,
-                        minWidth: 20,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {i + 1}.
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: theme.palette.dasDark.dark01,
                         flex: 1,
                         minWidth: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        flexDirection: 'column',
                       }}
-                      title={guessAddress(v[0], v[1])}
                     >
-                      {guessAddress(v[0], v[1])}
-                    </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: theme.palette.dasDark.dark01,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={guessAddress(v[0], v[1])}
+                      >
+                        {guessAddress(v[0], v[1])}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: theme.palette.dasGrey.grey01,
+                          fontFamily:
+                            'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+                          fontSize: 11,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {formatLatLng(v[0], v[1])}
+                      </Typography>
+                    </Box>
                     <IconButton
                       size="small"
                       onClick={() => startEditVertex(i)}
-                      aria-label={`編輯頂點 ${i + 1}`}
+                      aria-label={`編輯座標 ${i + 1}`}
                     >
                       <EditOutlinedIcon fontSize="small" />
                     </IconButton>
                     <IconButton
                       size="small"
                       onClick={() => removeVertex(i)}
-                      aria-label={`刪除頂點 ${i + 1}`}
+                      aria-label={`刪除座標 ${i + 1}`}
                     >
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
@@ -2404,17 +2692,21 @@ function FormDrawer({
                   key={`input-${i}`}
                   sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                 >
-                  <Box sx={{ width: 18, flexShrink: 0 }} />
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: theme.palette.dasGrey.grey01,
-                      minWidth: 20,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {draft.vertices.length + i + 1}.
-                  </Typography>
+                  {!hideOrderUI && (
+                    <>
+                      <Box sx={{ width: 18, flexShrink: 0 }} />
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: theme.palette.dasGrey.grey01,
+                          minWidth: 20,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {draft.vertices.length + i + 1}.
+                      </Typography>
+                    </>
+                  )}
                   <TextField
                     fullWidth
                     size="small"
@@ -2426,7 +2718,7 @@ function FormDrawer({
                     size="small"
                     onClick={() => submitVertexInput(i)}
                     disabled={!text.trim()}
-                    aria-label="加入頂點"
+                    aria-label="加入座標"
                     sx={{ color: theme.palette.dasPrimary.primary }}
                   >
                     <AddLocationAltOutlinedIcon fontSize="small" />
@@ -2495,7 +2787,11 @@ function FormDrawer({
           disabled={
             draft.shape === '圓形'
               ? !draft.center
-              : draft.vertices.length < 3
+              : draft.vertices.length < 3 ||
+                !draft.polygonClosed ||
+                (polygonVariant === 'C' &&
+                  findCrossingEdges(draft.vertices, draft.polygonClosed).size >
+                    0)
           }
           fullWidth
           variant="contained"

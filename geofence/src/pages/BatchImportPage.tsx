@@ -54,17 +54,17 @@ const INITIAL_ROWS: ImportRow[] = [
   { rowNum: 8, name: '7-11_板橋店', type: '圓形', address: '新北市板橋區文化路一段 188 號', radius: '200', vertices: '', errors: [] },
   // 9: 圓形 中心點地址 + 半徑 都必填
   { rowNum: 9, name: '屈臣氏_中和店', type: '圓形', address: '', radius: '', vertices: '', errors: ['圓形圍籬的「中心點地址」為必填', '圓形圍籬的「半徑 (m)」為必填'] },
-  // 10: 多邊形 頂點數不足 3
-  { rowNum: 10, name: '中和分區', type: '多邊形', address: '', radius: '', vertices: '新北市中和區景平路 100 號, 新北市中和區景平路 200 號', errors: ['多邊形圍籬的頂點數至少需有 3 個'] },
+  // 10: 多邊形 座標數不足 3
+  { rowNum: 10, name: '中和分區', type: '多邊形', address: '', radius: '', vertices: '新北市中和區景平路 100 號, 新北市中和區景平路 200 號', errors: ['多邊形圍籬的座標數至少需有 3 個'] },
   // 11: 圓形 成功
   { rowNum: 11, name: 'COSTCO_台中', type: '圓形', address: '台中市北屯區敦富路 215 號', radius: '500', vertices: '', errors: [] },
   // 12: 中心點地址 / 經緯度 查無
   { rowNum: 12, name: '不存在地點倉', type: '圓形', address: '火星基地一號站', radius: '300', vertices: '', errors: ['查無此中心點地址/經緯度'] },
-  // 13: 多邊形頂點 1, 2 查無
-  { rowNum: 13, name: '林口貨運專用道', type: '多邊形', address: '', radius: '', vertices: 'XYZ123, 不存在的地址 99 號, 新北市林口區文化三路 8 號', errors: ['查無頂點 1, 2 的地址/經緯度'] },
+  // 13: 多邊形座標 1, 2 查無
+  { rowNum: 13, name: '林口貨運專用道', type: '多邊形', address: '', radius: '', vertices: 'XYZ123, 不存在的地址 99 號, 新北市林口區文化三路 8 號', errors: ['查無座標 1, 2 的地址/經緯度'] },
   // 14: 圓形 成功
   { rowNum: 14, name: '7-11_中壢店', type: '圓形', address: '桃園市中壢區中央西路一段 80 號', radius: '200', vertices: '', errors: [] },
-  // 15: 圓形但有填頂點地址（多餘欄位忽略，仍成功）
+  // 15: 圓形但有填座標點（多餘欄位忽略，仍成功）
   { rowNum: 15, name: '家樂福_台中倉', type: '圓形', address: '台中市西屯區中港路三段 136 號', radius: '500', vertices: '台中市西屯區中港路 1 號, 台中市西屯區中港路 50 號, 台中市西屯區中港路 88 號', errors: [] },
   // 16: 多邊形但有填中心點 + 半徑（多餘欄位忽略，仍成功）
   { rowNum: 16, name: '基隆港集散區', type: '多邊形', address: '基隆市中正區中正路 1 號', radius: '400', vertices: '基隆市中正區中正路 1 號, 基隆市中正區中正路 50 號, 基隆市中正區中正路 80 號', errors: [] },
@@ -123,7 +123,7 @@ function fieldHasError(
     return errors.some((e) => e.includes('半徑'));
   }
   if (field === 'vertices') {
-    return errors.some((e) => e.includes('頂點'));
+    return errors.some((e) => e.includes('座標'));
   }
   return false;
 }
@@ -200,10 +200,10 @@ export default function BatchImportPage() {
       type: '圍籬類型',
       address: '中心點地址',
       radius: '半徑',
-      vertices: '頂點',
+      vertices: '座標',
     } as const;
     const keyword = keywordMap[field];
-    const POLYGON_VERTEX_ERROR = '多邊形圍籬的頂點數至少需有 3 個';
+    const POLYGON_VERTEX_ERROR = '多邊形圍籬的座標數至少需有 3 個';
     setRows((prev) =>
       prev.map((r) => {
         if (r.rowNum !== rowNum) return r;
@@ -447,7 +447,7 @@ export default function BatchImportPage() {
                   minWidth: 0,
                 }}
               >
-                若為圓型圍籬，需填入中心點地址、半徑；若為多邊形圍籬，則需填入頂點地址序列（如：1.地址, 2.地址, 3.地址......）。送出後，系統將畫出對應的圍籬範圍。
+                若為圓型圍籬，需填入中心點地址、半徑；若為多邊形圍籬，則需填入座標點序列（如：1.地址, 2.地址, 3.地址......）。送出後，系統將畫出對應的圍籬範圍。
               </Typography>
             </Box>
           </Box>
@@ -553,7 +553,7 @@ export default function BatchImportPage() {
                   </HeaderCell>
                   <HeaderCell sx={{ minWidth: 200 }}>中心點地址</HeaderCell>
                   <HeaderCell sx={{ minWidth: 96 }}>半徑 (m)</HeaderCell>
-                  <HeaderCell sx={{ minWidth: 360 }}>頂點地址</HeaderCell>
+                  <HeaderCell sx={{ minWidth: 360 }}>座標點</HeaderCell>
                 </TableRow>
               </TableHead>
               <TableBody>

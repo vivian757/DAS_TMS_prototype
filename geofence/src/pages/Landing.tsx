@@ -100,7 +100,7 @@ export default function Landing() {
           icon={<MapOutlinedIcon />}
           title="方案 A"
           subtitle="地圖為主"
-          description="地圖是主舞台，左側抽屜負責列表 / 詳情 / 表單。新增時在地圖上點擊設中心，拖圓邊 handle 即時脹縮半徑；多邊形則是點擊累加頂點。編輯、監控設定都在地圖上操作，不跳 modal。"
+          description="地圖是主舞台，左側抽屜負責列表 / 詳情 / 表單。新增時在地圖上點擊設中心，拖圓邊 handle 即時脹縮半徑；多邊形則是點擊累加座標。編輯、監控設定都在地圖上操作，不跳 modal。"
           chips={['地圖直接繪製', '半徑 handle 拖拉', '空間關係可見']}
           to="/a"
           recommended
@@ -135,7 +135,7 @@ export default function Landing() {
           </li>
           <li>
             <Typography variant="body1">
-              <b>新增 / 編輯的直接感</b> — 圓形在地圖上拖 handle 即時脹縮半徑,多邊形可輸入地址 Enter 加入或直接點擊加頂點,減少「表單→預覽→修改」的斷裂感。
+              <b>新增 / 編輯的直接感</b> — 圓形在地圖上拖 handle 即時脹縮半徑,多邊形可輸入地址 Enter 加入或直接點擊加座標,減少「表單→預覽→修改」的斷裂感。
             </Typography>
           </li>
           <li>

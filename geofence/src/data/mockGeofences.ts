@@ -16,7 +16,7 @@ export interface Geofence {
   lat: number; // 圓形：中心；多邊形：centroid（僅用於 map fit / list 代表點）
   lng: number;
   radius: number; // 圓形：半徑 m；多邊形：忽略（保留 0）
-  vertices?: [number, number][]; // 僅多邊形：頂點陣列（順序即連線順序）
+  vertices?: [number, number][]; // 僅多邊形：座標陣列（順序即連線順序）
   note?: string;
   isEnabled: boolean;
   usingOrderCount: number; // 後端 aggregate 結果，列表不展示；刪除時才查
@@ -67,6 +67,11 @@ const STREETS = [
   '忠孝東路', '信義路', '復興北路', '民生東路', '南京東路', '中山北路',
   '文化路', '中正路', '建國路', '環河路', '工業路', '重慶北路',
 ];
+
+// 格式化經緯度為人類可讀字串（4 位小數 ≈ 11m 精度）
+export function formatLatLng(lat: number, lng: number): string {
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+}
 
 // Fake reverse-geocoder — 從經緯度猜最近的城市，湊出看起來像地址的字串。
 // Prototype only; 不是真正的 reverse geocoding。
@@ -358,7 +363,7 @@ function generate(): Geofence[] {
       const venue = pick(VENUE_TYPES);
       const createdDaysAgo = randInt(10, 300);
       const updatedDaysAgo = Math.min(createdDaysAgo, randInt(0, 40));
-      const radius = pick([100, 150, 200, 300, 500]);
+      const radius = pick([300, 500, 800, 1000]);
       const isEnabled = rand() < 0.85;
       const createdBy = pick(USERS);
       out.push({
@@ -385,7 +390,7 @@ function generate(): Geofence[] {
     const anchor = pick(CITY_ANCHORS);
     const c = coord(anchor);
     const createdDaysAgo = randInt(200, 700);
-    const radius = pick([50, 100, 200, 1000, 5000]);
+    const radius = pick([300, 500, 1000, 5000]);
     const createdBy = pick(USERS);
     out.push({
       id: `GF-${String(idCounter++).padStart(4, '0')}`,
@@ -413,7 +418,7 @@ function generate(): Geofence[] {
     const venue = pick(VENUE_TYPES);
     const createdDaysAgo = randInt(5, 250);
     const updatedDaysAgo = Math.min(createdDaysAgo, randInt(0, 30));
-    const radius = pick([100, 200, 300, 500]);
+    const radius = pick([300, 500, 800]);
     const isEnabled = rand() < 0.9;
     const createdBy = pick(USERS);
     out.push({

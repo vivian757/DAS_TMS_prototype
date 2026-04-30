@@ -1402,8 +1402,8 @@ function GeofenceDetailDialog({
               <DetailReadOnlyField label="半徑" value={`${geofence.radius} m`} />
             ) : (
               <DetailReadOnlyField
-                label="頂點"
-                value={`${geofence.vertices?.length ?? 0} 個頂點`}
+                label="座標"
+                value={`${geofence.vertices?.length ?? 0} 個座標`}
               />
             )}
             <DetailReadOnlyField label="備註" value={geofence.note || '—'} multiline />

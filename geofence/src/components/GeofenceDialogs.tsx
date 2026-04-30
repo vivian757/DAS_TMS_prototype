@@ -154,7 +154,7 @@ export function GeofenceFormDialog({
     }
     if (shapeType === '圓形' && (!address.trim() || geocodingFailed)) return;
     if (shapeType === '多邊形' && vertices.length < 3) {
-      setVertexErrorShown(`多邊形至少需要 3 個頂點（目前 ${vertices.length}）`);
+      setVertexErrorShown(`多邊形至少需要 3 個座標（目前 ${vertices.length}）`);
       return;
     }
 
@@ -177,7 +177,7 @@ export function GeofenceFormDialog({
         shapeType === '多邊形' &&
         JSON.stringify(initial.vertices ?? []) !== JSON.stringify(vertices)
       ) {
-        summary = `更新多邊形頂點（${initial.vertices?.length ?? 0} → ${vertices.length} 個）`;
+        summary = `更新多邊形座標（${initial.vertices?.length ?? 0} → ${vertices.length} 個）`;
       } else if (initial.name !== trimmed) {
         summary = '更新圍籬名稱';
       } else if (initial.address !== address.trim()) {
@@ -315,7 +315,7 @@ export function GeofenceFormDialog({
                           textTransform: 'none',
                         }}
                       >
-                        點選地圖逐一加入頂點，適合廠區、碼頭等不規則範圍
+                        點選地圖逐一加入座標，適合廠區、碼頭等不規則範圍
                       </Typography>
                     </Box>
                   </ToggleButton>
@@ -388,9 +388,9 @@ export function GeofenceFormDialog({
                     onChange={(e) => {
                       const n = parseInt(e.target.value, 10);
                       if (!isFinite(n)) return;
-                      setRadius(Math.max(50, Math.min(5000, n)));
+                      setRadius(Math.max(300, Math.min(5000, n)));
                     }}
-                    inputProps={{ min: 50, max: 5000, step: 10, style: { textAlign: 'right' } }}
+                    inputProps={{ min: 300, max: 5000, step: 10, style: { textAlign: 'right' } }}
                     sx={{ width: 90 }}
                   />
                   <Typography variant="body1" sx={{ ml: 0.75, color: theme.palette.dasGrey.grey01 }}>
@@ -399,12 +399,12 @@ export function GeofenceFormDialog({
                 </Box>
                 <Slider
                   value={radius}
-                  min={50}
+                  min={300}
                   max={5000}
                   step={50}
                   onChange={(_, v) => setRadius(v as number)}
                   marks={[
-                    { value: 50, label: '50m' },
+                    { value: 300, label: '300m' },
                     { value: 1000, label: '1km' },
                     { value: 5000, label: '5km' },
                   ]}
@@ -422,13 +422,13 @@ export function GeofenceFormDialog({
                   variant="headline"
                   sx={{ display: 'block', color: theme.palette.dasGrey.grey01, mb: 0.75 }}
                 >
-                  頂點 <span style={{ color: theme.palette.dasPrimary.primary }}>*</span>
+                  座標 <span style={{ color: theme.palette.dasPrimary.primary }}>*</span>
                 </Typography>
                 <TextField
                   fullWidth
                   size="small"
                   value={vertexInput}
-                  placeholder="輸入地址或經緯度,按 Enter 加入頂點"
+                  placeholder="輸入地址或經緯度,按 Enter 加入座標"
                   onChange={(e) => {
                     setVertexInput(e.target.value);
                     if (vertexInputError) setVertexInputError(null);
@@ -442,7 +442,7 @@ export function GeofenceFormDialog({
                   error={Boolean(vertexInputError)}
                   helperText={
                     vertexInputError ??
-                    `已加入 ${vertices.length} 個頂點(至少需 3 個) · 也可直接在地圖上點擊加入`
+                    `已加入 ${vertices.length} 個座標(至少需 3 個) · 也可直接在地圖上點擊加入`
                   }
                 />
                 {vertexErrorShown && (
@@ -531,7 +531,7 @@ export function GeofenceFormDialog({
                 >
                   <InfoOutlinedIcon sx={{ fontSize: 14 }} />
                   <Typography variant="footnote" sx={{ color: '#fff' }}>
-                    已有 {vertices.length} 個頂點（拖曳頂點移動位置 · 點擊右鍵刪除頂點）
+                    已有 {vertices.length} 個座標（拖曳座標移動位置 · 點擊右鍵刪除座標）
                   </Typography>
                   <Box sx={{ width: '1px', height: 16, bgcolor: 'rgba(255,255,255,0.3)', mx: 0.5 }} />
                   <Button
@@ -569,7 +569,7 @@ export function GeofenceFormDialog({
               <Typography variant="footnote">
                 {shapeType === '圓形'
                   ? '點地圖任一點重設中心；拖曳 slider 看圓圈大小變化'
-                  : '輸入頂點地址並按 Enter 加入,或直接在地圖上點選加入頂點'}
+                  : '輸入座標點並按 Enter 加入,或直接在地圖上點選加入座標'}
               </Typography>
             </Box>
           </Box>

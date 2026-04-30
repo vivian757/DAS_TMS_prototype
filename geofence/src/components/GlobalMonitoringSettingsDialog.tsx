@@ -165,12 +165,6 @@ export default function GlobalMonitoringSettingsDialog({
             開啟後觸發的通知將發送至 TMS，並根據訂單實際設定的時間為準（業務類型「送」：預計配達開始/結束時間；「取」：預計取貨開始/結束時間）。
           </Typography>
 
-          <AlertTimeline
-            earlyArrival={draft.alerts.earlyArrival}
-            overtime={draft.alerts.overtime}
-            noShow={draft.alerts.noShow}
-          />
-
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <AlertCard
               icon={

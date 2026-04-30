@@ -34,7 +34,7 @@ function FitVertices({ vertices, fallbackCenter }: {
     } else if (vertices.length === 1) {
       map.setView(vertices[0], 16);
     } else {
-      // 頂點尚未開始，但地址已定位 → focus 並放大至目標位置
+      // 座標尚未開始，但地址已定位 → focus 並放大至目標位置
       map.flyTo(fallbackCenter, 16, { duration: 0.5 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
