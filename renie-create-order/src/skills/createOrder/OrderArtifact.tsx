@@ -1,4 +1,4 @@
-import { Box, Button, Typography, useTheme } from '@mui/material';
+import { Box, Button, Link, Typography, useTheme } from '@mui/material';
 import type { ArtifactRendererProps } from '../types';
 import type {
   CreateOrderArtifactData,
@@ -63,7 +63,23 @@ export default function OrderArtifact({
     });
     setTimeout(() => {
       onFollowUp?.(
-        `已成功建立 ${committed} 張訂單,可至訂單列表查閱。是否需要其他協助?`,
+        <>
+          已成功建立 {committed} 張訂單,可至
+          <Link
+            href="#"
+            onClick={(e) => e.preventDefault()}
+            sx={{
+              color: theme.palette.dasPrimary.primary,
+              textDecoration: 'underline',
+              fontWeight: 500,
+              mx: 0.25,
+              cursor: 'pointer',
+            }}
+          >
+            訂單管理
+          </Link>
+          查閱。
+        </>,
       );
     }, 200);
   };

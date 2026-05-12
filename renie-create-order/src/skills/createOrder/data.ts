@@ -1,3 +1,4 @@
+import type { TemplateOrderBlock } from './parseInput';
 import type { FieldKey, OrderDraft } from './types';
 
 export const SAMPLE_INPUT_FULL = `今天訂單：
@@ -77,7 +78,7 @@ export function parseOrdersFromTextFull(_rawText: string): OrderDraft[] {
         customerName: '大同公司',
         recipientAddress: '台中市西屯區工業區一路 200 號',
         itemDescription: '零件 3 箱',
-        deliveryTime: '今日 17:00 前',
+        deliveryTime: '2026/05/11 17:00',
       },
     },
     {
@@ -162,16 +163,52 @@ export function parseOrdersFromTextPartial(_rawText: string): OrderDraft[] {
   ];
 }
 
-/** Gathering 收齊後,把 collected 包成單張訂單 */
+/** Gathering 收齊後,把 collected 包成單張訂單。orderNoOverride 由 OP 在範本中提供時使用,否則自動編碼。 */
 export function ordersFromCollected(
   collected: Partial<Record<FieldKey, string>>,
+  orderNoOverride?: string,
 ): OrderDraft[] {
   const batchId = newBatchId();
   return [
     {
       id: `${batchId}-1`,
-      orderNo: `TJIE${34985 + batchCounter}`,
+      orderNo: orderNoOverride ?? `TJIE${34985 + batchCounter}`,
       fields: { ...collected },
     },
   ];
+}
+
+const MUST_COLLECT_FIELDS_FROM_TEMPLATE: FieldKey[] = [
+  'customerName',
+  'recipientAddress',
+];
+
+/**
+ * 把 OP 填的 template blocks 轉成 OrderDraft[]:
+ * - businessType 沒填就 fallback 「送」
+ * - 必填欄位(客戶 / 收件人地址)沒填會進 missingFields
+ * - orderNo 沒填會自動編碼
+ */
+export function ordersFromTemplateBlocks(
+  blocks: TemplateOrderBlock[],
+): OrderDraft[] {
+  const batchId = newBatchId();
+  const batchNo = batchCounter;
+  return blocks.map((block, idx) => {
+    const fields: Partial<Record<FieldKey, string>> = { ...block.fields };
+    if (!fields.businessType) fields.businessType = '送';
+    const missingFields = MUST_COLLECT_FIELDS_FROM_TEMPLATE.filter(
+      (f) => !fields[f],
+    );
+    const autoNo = `TJIE${34990 + batchNo}${String(idx + 1).padStart(2, '0')}`;
+    const order: OrderDraft = {
+      id: `${batchId}-${idx + 1}`,
+      orderNo: block.orderNo ?? autoNo,
+      fields,
+    };
+    if (missingFields.length > 0) {
+      order.missingFields = missingFields;
+    }
+    return order;
+  });
 }

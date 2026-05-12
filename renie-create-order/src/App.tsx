@@ -5,6 +5,7 @@ import PageHeader from './components/PageHeader';
 import InitialScreen from './components/InitialScreen';
 import InputBar from './components/InputBar';
 import MessageBubble from './components/MessageBubble';
+import ThinkingIndicator from './components/ThinkingIndicator';
 import type { ConversationMessage } from './types';
 import type { ArtifactStore } from './skills/types';
 import { findSkillById, routeIntent } from './skills/registry';
@@ -18,6 +19,7 @@ export default function App() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [artifactData, setArtifactData] = useState<Record<string, unknown>>({});
   const [isThinking, setIsThinking] = useState(false);
+  const [thinkingStatus, setThinkingStatus] = useState('解讀指令內容');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasConversation = messages.length > 0;
@@ -69,9 +71,12 @@ export default function App() {
     async (skillId: string, input: string) => {
       const skill = findSkillById(skillId);
       if (!skill) return;
+      setThinkingStatus('解讀指令內容');
       setIsThinking(true);
       try {
-        const result = await skill.run(input, {});
+        const result = await skill.run(input, {
+          setStatus: setThinkingStatus,
+        });
         pushMessage({
           id: nextMsgId(),
           role: 'renie',
@@ -102,9 +107,12 @@ export default function App() {
     async (skillId: string, artifactId: string, input: string) => {
       const skill = findSkillById(skillId);
       if (!skill?.continueSession) return;
+      setThinkingStatus('解讀指令內容');
       setIsThinking(true);
       try {
-        const result = await skill.continueSession(input, artifactId, store, {});
+        const result = await skill.continueSession(input, artifactId, store, {
+          setStatus: setThinkingStatus,
+        });
         pushMessage({
           id: nextMsgId(),
           role: 'renie',
@@ -275,50 +283,17 @@ export default function App() {
             }}
           >
             {renderedMessages}
-            {isThinking && (
-              <MessageBubble role="renie">
-                <Box
-                  sx={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 0.75,
-                    color: theme.palette.dasGrey.grey01,
-                  }}
-                >
-                  <ThinkingDots />
-                  <span style={{ fontSize: 13 }}>Renie 正在處理…</span>
-                </Box>
-              </MessageBubble>
-            )}
+            {isThinking && <ThinkingIndicator status={thinkingStatus} />}
           </Box>
         )}
       </Box>
 
-      <InputBar draft={draft} onChangeDraft={setDraft} onSend={handleSend} />
-    </Box>
-  );
-}
-
-function ThinkingDots() {
-  return (
-    <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
-      {[0, 1, 2].map((i) => (
-        <Box
-          key={i}
-          sx={{
-            width: 6,
-            height: 6,
-            bgcolor: 'currentColor',
-            borderRadius: '50%',
-            animation: 'rb 1.2s infinite',
-            animationDelay: `${i * 0.15}s`,
-            '@keyframes rb': {
-              '0%, 80%, 100%': { opacity: 0.3, transform: 'translateY(0)' },
-              '40%': { opacity: 1, transform: 'translateY(-3px)' },
-            },
-          }}
-        />
-      ))}
+      <InputBar
+        draft={draft}
+        onChangeDraft={setDraft}
+        onSend={handleSend}
+        onPickCommand={handlePickSuggestion}
+      />
     </Box>
   );
 }

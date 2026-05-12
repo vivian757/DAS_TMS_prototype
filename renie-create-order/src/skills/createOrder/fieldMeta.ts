@@ -15,7 +15,7 @@ export const FIELD_META: Record<FieldKey, FieldMeta> = {
   recipientPhone: { label: '收件人電話' },
   recipientAddress: { label: '收件人地址', fullWidth: true },
   itemDescription: { label: '品項', fullWidth: true },
-  deliveryTime: { label: '預定送達' },
+  deliveryTime: { label: '預計配達日與時間', fullWidth: true },
   note: { label: '備註', fullWidth: true },
 };
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Box,
   IconButton,
@@ -7,13 +7,20 @@ import {
   useTheme,
   Divider,
 } from '@mui/material';
-import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import SendIcon from '@mui/icons-material/Send';
+import CommandPalette from './CommandPalette';
 
 type Props = {
   draft: string;
   onChangeDraft: (text: string) => void;
   onSend: (text: string) => void;
+  /** 從指令選單觸發某個 entry */
+  onPickCommand?: (
+    skillId: string,
+    promptText: string,
+    autoSend: boolean,
+  ) => void;
   placeholder?: string;
 };
 
@@ -21,10 +28,13 @@ export default function InputBar({
   draft,
   onChangeDraft,
   onSend,
+  onPickCommand,
   placeholder = '請輸入指令...',
 }: Props) {
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const paletteButtonRef = useRef<HTMLDivElement>(null);
 
   const handleSend = () => {
     const t = draft.trim();
@@ -101,6 +111,9 @@ export default function InputBar({
           }}
         >
           <Box
+            ref={paletteButtonRef}
+            role="button"
+            onClick={() => setPaletteOpen(true)}
             sx={{
               display: 'flex',
               alignItems: 'center',
@@ -109,12 +122,17 @@ export default function InputBar({
               py: 0.5,
               borderRadius: 1,
               cursor: 'pointer',
-              color: theme.palette.dasDark.dark03,
+              color: paletteOpen
+                ? theme.palette.dasPrimary.primary
+                : theme.palette.dasDark.dark03,
+              bgcolor: paletteOpen
+                ? theme.palette.dasPrimary.lite03
+                : 'transparent',
               '&:hover': { bgcolor: theme.palette.dasGrey.grey05 },
             }}
           >
-            <BookmarkBorderIcon sx={{ fontSize: 18 }} />
-            <Typography variant="body2">常用指令 (8/10)</Typography>
+            <AutoAwesomeOutlinedIcon sx={{ fontSize: 18 }} />
+            <Typography variant="body2">指令</Typography>
           </Box>
 
           <IconButton
@@ -144,6 +162,15 @@ export default function InputBar({
       >
         ⓘ 本服務產出的內容均由 AI 生成,目前提供訂單建立、檢索與分析。
       </Typography>
+
+      <CommandPalette
+        anchorEl={paletteButtonRef.current}
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onPick={(skillId, promptText, autoSend) => {
+          onPickCommand?.(skillId, promptText, autoSend);
+        }}
+      />
     </Box>
   );
 }

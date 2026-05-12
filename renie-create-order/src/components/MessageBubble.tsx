@@ -1,5 +1,4 @@
-import { Box, Typography, useTheme } from '@mui/material';
-import PaperPlaneLogo from './PaperPlaneLogo';
+import { Box, useTheme } from '@mui/material';
 
 type Props = {
   role: 'user' | 'renie';
@@ -17,12 +16,11 @@ export default function MessageBubble({ role, children, fullWidth }: Props) {
         <Box
           sx={{
             maxWidth: '70%',
-            bgcolor: theme.palette.dasPrimary.lite03,
+            bgcolor: theme.palette.dasGrey.grey05,
             color: theme.palette.dasDark.dark01,
             px: 2,
             py: 1.25,
             borderRadius: '16px 16px 4px 16px',
-            border: `1px solid ${theme.palette.dasPrimary.lite02}`,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             fontSize: 14,
@@ -36,49 +34,21 @@ export default function MessageBubble({ role, children, fullWidth }: Props) {
   }
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 2 }}>
-      <Box
-        sx={{
-          width: 32,
-          height: 32,
-          borderRadius: '50%',
-          bgcolor: '#FFFFFF',
-          border: `1px solid ${theme.palette.dasGrey.grey04}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <PaperPlaneLogo size={18} />
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0, maxWidth: fullWidth ? '100%' : '85%' }}>
-        <Typography
-          variant="caption"
+    <Box sx={{ mb: 2, maxWidth: fullWidth ? '100%' : '85%' }}>
+      {typeof children === 'string' ? (
+        <Box
           sx={{
-            color: theme.palette.dasGrey.grey01,
-            display: 'block',
-            mb: 0.5,
-            fontWeight: 600,
+            fontSize: 14,
+            lineHeight: '22px',
+            color: theme.palette.dasDark.dark01,
+            whiteSpace: 'pre-wrap',
           }}
         >
-          Renie
-        </Typography>
-        {typeof children === 'string' ? (
-          <Box
-            sx={{
-              fontSize: 14,
-              lineHeight: '22px',
-              color: theme.palette.dasDark.dark01,
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {children}
-          </Box>
-        ) : (
-          children
-        )}
-      </Box>
+          {children}
+        </Box>
+      ) : (
+        children
+      )}
     </Box>
   );
 }

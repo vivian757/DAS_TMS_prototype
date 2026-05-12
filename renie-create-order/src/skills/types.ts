@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { SvgIconComponent } from '@mui/icons-material';
 
 export type SkillCategory = 'create' | 'query' | 'analyze' | 'edit';
@@ -13,7 +13,9 @@ export type SuggestedPrompt = {
 };
 
 export type SkillRunContext = {
-  /** 之後可擴：currentUser、permissions、locale… */
+  /** 由 App 提供:Skill 處理時可呼叫,更新 ThinkingIndicator 顯示的子狀態文字 */
+  setStatus?: (status: string) => void;
+  /** 之後可擴:currentUser、permissions、locale… */
 };
 
 export type SkillExecutionResult = {
@@ -36,7 +38,7 @@ export type ArtifactRendererProps = {
   artifactId: string;
   store: ArtifactStore;
   /** Skill 內部完成某個操作後想新增一則 Renie 訊息(例如部分 commit 完成的後續通知) */
-  onFollowUp?: (text: string) => void;
+  onFollowUp?: (text: ReactNode) => void;
 };
 
 export type RenieSkill = {

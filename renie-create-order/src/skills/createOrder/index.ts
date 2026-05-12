@@ -7,6 +7,7 @@ import {
   SAMPLE_INPUT_PARTIAL,
   generateArtifactId,
   ordersFromCollected,
+  ordersFromTemplateBlocks,
   parseOrdersFromTextFull,
   parseOrdersFromTextPartial,
 } from './data';
@@ -15,6 +16,8 @@ import {
   extractFields,
   extractOrderRefs,
   isMultiOrderInput,
+  isTemplateInput,
+  parseTemplateInput,
 } from './parseInput';
 import OrderArtifact from './OrderArtifact';
 import type { CreateOrderArtifactData, FieldKey, OrderDraft } from './types';
@@ -66,11 +69,17 @@ export const CREATE_ORDER_DEMO_SHORTCUTS: CreateOrderDemoShortcut[] = [
 ];
 
 // ─── 文案 helpers ─────────────────────────────────────────────
-function buildFormatTemplate(fieldsToAsk: FieldKey[]): string {
+function buildFormatTemplate(
+  fieldsToAsk: FieldKey[],
+  options: { includeOrderNo?: boolean } = {},
+): string {
   const lines = ['訂單#1'];
+  if (options.includeOrderNo) {
+    lines.push('- 訂單編號:(若無提供則會自動編碼)');
+  }
   for (const f of fieldsToAsk) {
     if (f === 'businessType')
-      lines.push('- 業務類型:(送 / 取,若無提供則預設為「送」)');
+      lines.push('- 業務類型:(送 / 取,預設為「送」)');
     else if (f === 'customerName') lines.push('- 客戶:');
     else if (f === 'recipientAddress') lines.push('- 收件人地址:');
     else lines.push(`- ${FIELD_META[f].label}:`);
@@ -106,18 +115,21 @@ function parseMultiOrderInput(input: string): OrderDraft[] {
 }
 
 // ─── State machine 核心 ────────────────────────────────────────
+function buildConfirmSummary(count: number): string {
+  return `已為您整理出 ${count} 張訂單,請確認後點擊「建立」送出,如需調整請直接點擊欄位或告訴我需要更改的內容`;
+}
+
 function buildOrdersSummary(orders: OrderDraft[]): string {
   const missingByOrder = orders
     .map((o, idx) => ({ idx: idx + 1, missing: o.missingFields ?? [] }))
     .filter((x) => x.missing.length > 0);
-  const base = `已為您解析出 ${orders.length} 張訂單`;
   if (missingByOrder.length === 0) {
-    return `${base},請確認後點「建立」送出`;
+    return buildConfirmSummary(orders.length);
   }
   const missingPart = missingByOrder
     .map((x) => `#${x.idx} 缺${listLabels(x.missing)}`)
     .join('、');
-  return `${base},${missingPart},您可在卡片內補,或直接告訴我(例如:「2 號客戶大同公司」)`;
+  return `已為您解析出 ${orders.length} 張訂單,${missingPart},您可在卡片內補,或直接告訴我(例如:「2 號客戶大同公司」)`;
 }
 
 export const createOrderSkill: RenieSkill = {
@@ -130,9 +142,14 @@ export const createOrderSkill: RenieSkill = {
   triggerKeywords: TRIGGER_KEYWORDS,
   suggestedPrompts: [
     {
-      text: '請幫我建單',
-      payload: '幫我建單',
-      autoSend: true,
+      text: '建立訂單',
+      payload: `幫我建立訂單
+訂單#1
+- 訂單編號:(若無提供則會自動編碼)
+- 業務類型:(送 / 取,預設為「送」)
+- 客戶:
+- 收件人地址:`,
+      autoSend: false,
     },
   ],
   highlightInInitial: true,
@@ -140,10 +157,33 @@ export const createOrderSkill: RenieSkill = {
 
   matchIntent,
 
-  async run(input) {
-    await new Promise((r) => setTimeout(r, 900));
+  async run(input, ctx) {
+    const step = async (text: string, ms: number) => {
+      ctx.setStatus?.(text);
+      await new Promise((r) => setTimeout(r, ms));
+    };
+    await step('解讀指令內容', 280);
+    await step('解析訂單資料', 320);
+    await step('比對客戶資料', 260);
+    await step('整理訂單預覽', 200);
 
-    // 多筆格式 → 直接展卡(可能含 missingFields)
+    // 1. 模板格式 → 解析多個訂單 block,每張獨立展卡(missing 用橘框 + 對話可補)
+    if (isTemplateInput(input)) {
+      const blocks = parseTemplateInput(input);
+      if (blocks.length > 0) {
+        const orders = ordersFromTemplateBlocks(blocks);
+        return {
+          summary: buildOrdersSummary(orders),
+          artifact: {
+            artifactId: generateArtifactId(),
+            data: { mode: 'orders', orders } satisfies CreateOrderArtifactData,
+          },
+        };
+      }
+      // 沒抽出任何 block(極端 case) → fallthrough 到 gathering
+    }
+
+    // 2. 多筆格式 → 直接展卡(可能含 missingFields)
     if (isMultiOrderInput(input)) {
       const orders = parseMultiOrderInput(input);
       return {
@@ -155,14 +195,14 @@ export const createOrderSkill: RenieSkill = {
       };
     }
 
-    // 單筆/極簡:抽欄位看完整度
+    // 3. 單筆/極簡:抽欄位看完整度
     const extracted = extractFields(input);
 
     if (isAllCollected(extracted)) {
       // 一句話齊全 → 跳過 gathering,直接展卡
       const orders = ordersFromCollected(withBusinessTypeDefault(extracted));
       return {
-        summary: '已為您整理出訂單,請確認後點「建立」送出',
+        summary: buildConfirmSummary(orders.length),
         artifact: {
           artifactId: generateArtifactId(),
           data: { mode: 'orders', orders } satisfies CreateOrderArtifactData,
@@ -171,13 +211,12 @@ export const createOrderSkill: RenieSkill = {
     }
 
     // 進 gathering:純文字 + 格式範本
-    const template = buildFormatTemplate([
-      'businessType',
-      'customerName',
-      'recipientAddress',
-    ]);
+    const template = buildFormatTemplate(
+      ['businessType', 'customerName', 'recipientAddress'],
+      { includeOrderNo: true },
+    );
     return {
-      summary: `好的,建立訂單至少需要以下三項資訊,您可參考下方的格式回覆,或直接貼上您的訂單資料\n\n${template}`,
+      summary: `建立訂單至少需要以下資訊,您可參考下方的格式回覆,或直接補充/貼上您所需的訂單資料\n\n${template}`,
       artifact: {
         artifactId: generateArtifactId(),
         data: { mode: 'gathering', collected: extracted },
@@ -201,8 +240,13 @@ export const createOrderSkill: RenieSkill = {
     return d.mode === 'orders';
   },
 
-  async continueSession(input, artifactId, store) {
-    await new Promise((r) => setTimeout(r, 500));
+  async continueSession(input, artifactId, store, ctx) {
+    const step = async (text: string, ms: number) => {
+      ctx.setStatus?.(text);
+      await new Promise((r) => setTimeout(r, ms));
+    };
+    await step('解讀指令內容', 280);
+    await step('整理回覆', 240);
     const data = store.get<CreateOrderArtifactData>(artifactId);
     if (!data) {
       return { summary: '找不到對應的訂單,請重新開始' };
@@ -226,7 +270,7 @@ export const createOrderSkill: RenieSkill = {
           collected: merged,
         }));
         return {
-          summary: '資訊已備齊,以下是為您整理的訂單,請確認後點「建立」送出',
+          summary: buildConfirmSummary(orders.length),
           promotedArtifact: {
             artifactId: newArtifactId,
             data: { mode: 'orders', orders },
