@@ -23,21 +23,34 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: geofence/package-lock.json
 
-      - name: Install
+      # ── geofence ─────────────────────────────────────────
+      - name: Install (geofence)
         working-directory: geofence
         run: npm ci
 
-      - name: Build
+      - name: Build (geofence)
         working-directory: geofence
         run: npm run build
 
+      # ── renie-create-order ───────────────────────────────
+      - name: Install (renie-create-order)
+        working-directory: renie-create-order
+        run: npm install
+
+      - name: Build (renie-create-order)
+        working-directory: renie-create-order
+        run: npm run build
+
+      # ── Assemble publish folder ──────────────────────────
       - name: Assemble publish folder
         run: |
           mkdir -p _site/geofence
           cp -r geofence/dist/. _site/geofence/
+
+          mkdir -p _site/renie-create-order
+          cp -r renie-create-order/dist/. _site/renie-create-order/
+
           # Preserve existing root-level prototypes
           [ -f c-tooltip-style.html ] && cp c-tooltip-style.html _site/ || true
           [ -f order-management-drawer.html ] && cp order-management-drawer.html _site/ || true
