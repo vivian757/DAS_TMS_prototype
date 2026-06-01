@@ -109,6 +109,145 @@ const LABEL_TO_FIELD: Record<string, FieldKey> = {
   備註: 'note',
 };
 
+// ─── 批量修改指令解析 ─────────────────────────────────────────
+// 偵測「全部改成明天 14:00 前送達」這類批改指令,回傳要套用的 field + value。
+// scope 為 'all' 時套用所有 pending orders;refs 為指定的訂單編號(目前只支援 all)。
+
+export type BatchUpdate = {
+  scope: 'all';
+  targets: Array<{ field: FieldKey; value: string }>;
+  /** 描述用 — 給對話泡回應使用 */
+  phrase: string;
+};
+
+const BATCH_SCOPE_KEYWORDS = /(全部|所有|每張|每筆|都)/;
+
+const RELATIVE_DATES: Record<string, number> = {
+  今天: 0,
+  明天: 1,
+  後天: 2,
+  明日: 1,
+  後日: 2,
+};
+
+function formatDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}/${m}/${day}`;
+}
+
+function extractRelativeDate(text: string, today: Date): string | undefined {
+  for (const [kw, offset] of Object.entries(RELATIVE_DATES)) {
+    if (text.includes(kw)) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + offset);
+      return formatDate(d);
+    }
+  }
+  // 明確日期格式:5/27 / 2026/05/27 / 2026-05-27
+  const explicit =
+    text.match(/(\d{4}[\/\-])?\d{1,2}[\/\-]\d{1,2}/);
+  if (explicit) return explicit[0].replace(/-/g, '/');
+  return undefined;
+}
+
+function extractTime(text: string): string | undefined {
+  // HH:MM
+  const m1 = text.match(/(\d{1,2}):(\d{2})/);
+  if (m1) return `${m1[1].padStart(2, '0')}:${m1[2]}`;
+  // 中文:下午 2 點 / 上午 9 點 30 分
+  const m2 = text.match(
+    /(早上|上午|中午|下午|晚上)\s*(\d{1,2})\s*點(?:(\d{1,2})\s*分)?/,
+  );
+  if (m2) {
+    let h = Number(m2[2]);
+    if (/下午|晚上/.test(m2[1]) && h < 12) h += 12;
+    const mm = m2[3] ?? '00';
+    return `${String(h).padStart(2, '0')}:${mm.padStart(2, '0')}`;
+  }
+  return undefined;
+}
+
+/**
+ * 從「客戶改成X」「客戶改為X」「客戶設成X」這類句法抽出客戶名。
+ * 必須有「客戶」context,排除日期 / 時間 / 純數字。
+ */
+function extractBatchCustomer(text: string): string | undefined {
+  if (!/客戶/.test(text)) return undefined;
+  // 找「改|設|換|變 (成|為|到|做)? X」中的 X
+  const m = text.match(/(?:改|設|換|變更|變)(?:成|為|到|做)?\s*([一-龥A-Za-z0-9]{1,12})/);
+  if (!m) return undefined;
+  const captured = m[1];
+  if (/^(今天|明天|後天|明日|後日)$/.test(captured)) return undefined;
+  if (/^\d/.test(captured)) return undefined;
+  return captured;
+}
+
+/**
+ * 從輸入文字解析批量修改指令。
+ *
+ * 範例:
+ *   「全部改成明天 14:00 前送達」 → deliveryTime = "2026/05/27 14:00"
+ *   「全部明天取貨」           → pickupDate = "2026/05/27"
+ *   「所有訂單改成下午 3 點配達」 → deliveryEndTime = "15:00"
+ *   「把所有訂單的客戶改成客戶B」 → customerName = "客戶B"
+ */
+export function extractBatchUpdate(
+  text: string,
+  today: Date,
+): BatchUpdate | null {
+  if (!BATCH_SCOPE_KEYWORDS.test(text)) return null;
+
+  const date = extractRelativeDate(text, today);
+  const time = extractTime(text);
+  const customer = extractBatchCustomer(text);
+  if (!date && !time && !customer) return null;
+
+  const isPickup = /取貨|取件/.test(text);
+  const isDelivery = /送達|配達|送到|送貨/.test(text) || !isPickup;
+
+  const targets: Array<{ field: FieldKey; value: string }> = [];
+  const phraseParts: string[] = [];
+
+  if (date && time) {
+    const value = `${date} ${time}`;
+    if (isPickup) {
+      targets.push({ field: 'pickupDate', value: date });
+      targets.push({ field: 'pickupEndTime', value: time });
+      phraseParts.push(`預計取貨時間「${value} 前」`);
+    } else if (isDelivery) {
+      targets.push({ field: 'deliveryDate', value: date });
+      targets.push({ field: 'deliveryEndTime', value: time });
+      phraseParts.push(`預計配達時間「${value} 前」`);
+    }
+  } else if (date) {
+    if (isPickup) {
+      targets.push({ field: 'pickupDate', value: date });
+      phraseParts.push(`預計取貨日「${date}」`);
+    } else {
+      targets.push({ field: 'deliveryDate', value: date });
+      phraseParts.push(`預計配達日「${date}」`);
+    }
+  } else if (time) {
+    if (isPickup) {
+      targets.push({ field: 'pickupEndTime', value: time });
+      phraseParts.push(`預計取貨結束時間「${time}」`);
+    } else {
+      targets.push({ field: 'deliveryEndTime', value: time });
+      phraseParts.push(`預計配達結束時間「${time}」`);
+    }
+  }
+
+  if (customer) {
+    targets.push({ field: 'customerName', value: customer });
+    phraseParts.push(`客戶改為「${customer}」`);
+  }
+
+  if (targets.length === 0) return null;
+  return { scope: 'all', targets, phrase: phraseParts.join('、') };
+}
+
 /** 一個模板 block 對應一張訂單 */
 export type TemplateOrderBlock = {
   /** OP 自己填的訂單編號(若有);沒填會由 ordersFromTemplateBlocks 自動編碼 */

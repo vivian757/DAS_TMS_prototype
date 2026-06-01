@@ -22,8 +22,15 @@ export const querySummarySkill: RenieSkill = {
     return TRIGGER_KEYWORDS.some((k) => text.includes(k));
   },
 
-  async run() {
-    await new Promise((r) => setTimeout(r, 700));
+  async run(_input, ctx) {
+    const step = async (text: string, ms: number) => {
+      ctx.setStatus?.(text);
+      await new Promise((r) => setTimeout(r, ms));
+    };
+    await step('解讀指令內容', 600);
+    await step('讀取今日訂單', 900);
+    await step('整理摘要報表', 800);
+
     counter += 1;
     const data: SummaryArtifactData = {
       total: 56,

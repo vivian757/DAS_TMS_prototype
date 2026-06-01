@@ -1,18 +1,23 @@
+import type { ReactNode } from 'react';
+import { Box } from '@mui/material';
 import AddBoxOutlinedIcon from '@mui/icons-material/AddBoxOutlined';
 import type { RenieSkill } from '../types';
+import AlertBox, { type AlertItem } from './AlertBox';
 import {
   MUST_COLLECT_FIELDS,
-  SAMPLE_INPUT_FULL,
-  SAMPLE_INPUT_MINIMAL,
+  SAMPLE_INPUT_AI_TEMPLATE,
+  SAMPLE_INPUT_CLEAN,
   SAMPLE_INPUT_PARTIAL,
   generateArtifactId,
   ordersFromCollected,
   ordersFromTemplateBlocks,
+  parseOrdersFromTextClean,
   parseOrdersFromTextFull,
   parseOrdersFromTextPartial,
 } from './data';
 import { FIELD_META } from './fieldMeta';
 import {
+  extractBatchUpdate,
   extractFields,
   extractOrderRefs,
   isMultiOrderInput,
@@ -20,7 +25,14 @@ import {
   parseTemplateInput,
 } from './parseInput';
 import OrderArtifact from './OrderArtifact';
-import type { CreateOrderArtifactData, FieldKey, OrderDraft } from './types';
+import BatchUpdateConfirmCard from './BatchUpdateConfirmCard';
+import { useArtifactStore } from './storeContext';
+import type {
+  CreateOrderArtifactData,
+  FieldKey,
+  OrderDraft,
+  PendingBatchUpdate,
+} from './types';
 
 const TRIGGER_KEYWORDS = [
   '建單',
@@ -45,26 +57,28 @@ export type CreateOrderDemoShortcut = {
   label: string;
   description: string;
   payload: string;
+  /** 由 demo 入口指定初始 view mode(覆蓋狀態驅動預設) */
+  initialViewMode?: 'cards' | 'table';
 };
 
 export const CREATE_ORDER_DEMO_SHORTCUTS: CreateOrderDemoShortcut[] = [
   {
-    id: 'demo-full',
-    label: '完整資料',
-    description: '貼上 5 張完整訂單,直接展卡',
-    payload: SAMPLE_INPUT_FULL,
+    id: 'demo-clean',
+    label: '解析完整',
+    description: '3 張資料完整、無歧義的訂單 — 預設進表格檢視',
+    payload: SAMPLE_INPUT_CLEAN,
   },
   {
     id: 'demo-partial',
     label: '部分缺漏',
-    description: '5 張單其中必填欄位缺漏,卡片標橘框、對話也可補',
+    description: '10 張訂單,1 張缺必填+貨品名超長、2 張提醒類問題、1 張客戶歧義',
     payload: SAMPLE_INPUT_PARTIAL,
   },
   {
-    id: 'demo-minimal',
-    label: '資訊極簡',
-    description: '一句話起步,純文字追問三項必填,收齊後展卡',
-    payload: SAMPLE_INPUT_MINIMAL,
+    id: 'demo-ai-template',
+    label: 'ai 指令範本',
+    description: '送出「幫我新增訂單」短指令,Renie 用範本格式回覆',
+    payload: SAMPLE_INPUT_AI_TEMPLATE,
   },
 ];
 
@@ -111,7 +125,68 @@ function parseMultiOrderInput(input: string): OrderDraft[] {
   if (input.includes('部分缺資料') || input.includes('待補')) {
     return parseOrdersFromTextPartial(input);
   }
+  if (input.includes('全部資料完整')) {
+    return parseOrdersFromTextClean(input);
+  }
   return parseOrdersFromTextFull(input);
+}
+
+// ─── 推導 alert items ──────────────────────────────────────────
+/**
+ * 從訂單清單推導出兩類提示:
+ *   error    → 缺必填、客戶不存在系統(會擋送出)
+ *   reminder → 缺寄件人地址(非強制但建議補)
+ */
+function deriveAlerts(orders: OrderDraft[]): {
+  errors: AlertItem[];
+  reminders: AlertItem[];
+} {
+  // 每張訂單收集自己的 errors / reminders,最後依列號合併成 AlertItem
+  const errorsByRow = new Map<number, string[]>();
+  const remindersByRow = new Map<number, string[]>();
+
+  const pushError = (row: number, msg: string) => {
+    const arr = errorsByRow.get(row) ?? [];
+    arr.push(msg);
+    errorsByRow.set(row, arr);
+  };
+  const pushReminder = (row: number, msg: string) => {
+    const arr = remindersByRow.get(row) ?? [];
+    arr.push(msg);
+    remindersByRow.set(row, arr);
+  };
+
+  orders.forEach((o, idx) => {
+    if (o.committed) return;
+    const row = idx + 1;
+
+    (o.missingFields ?? []).forEach((f) => {
+      pushError(row, `「${FIELD_META[f].label}」為必填`);
+    });
+    Object.keys(o.ambiguousFields ?? {}).forEach((k) => {
+      const f = k as FieldKey;
+      pushError(row, `「${FIELD_META[f].label}」不存在於系統中`);
+    });
+    (o.extraErrors ?? []).forEach((msg) => pushError(row, msg));
+
+    if (!o.fields.senderAddress) {
+      pushReminder(
+        row,
+        '尚未填寫寄件人地址!建議填寫該地址以確保成功「取」與「送」。',
+      );
+    }
+    (o.extraReminders ?? []).forEach((msg) => pushReminder(row, msg));
+  });
+
+  const toItems = (map: Map<number, string[]>): AlertItem[] =>
+    Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([row, messages]) => ({ rows: [row], messages }));
+
+  return {
+    errors: toItems(errorsByRow),
+    reminders: toItems(remindersByRow),
+  };
 }
 
 // ─── State machine 核心 ────────────────────────────────────────
@@ -119,17 +194,36 @@ function buildConfirmSummary(count: number): string {
   return `已為您整理出 ${count} 張訂單,請確認後點擊「建立」送出,如需調整請直接點擊欄位或告訴我需要更改的內容`;
 }
 
-function buildOrdersSummary(orders: OrderDraft[]): string {
-  const missingByOrder = orders
-    .map((o, idx) => ({ idx: idx + 1, missing: o.missingFields ?? [] }))
-    .filter((x) => x.missing.length > 0);
-  if (missingByOrder.length === 0) {
-    return buildConfirmSummary(orders.length);
-  }
-  const missingPart = missingByOrder
-    .map((x) => `#${x.idx} 缺${listLabels(x.missing)}`)
-    .join('、');
-  return `已為您解析出 ${orders.length} 張訂單,${missingPart},您可在卡片內補,或直接告訴我(例如:「2 號客戶大同公司」)`;
+/**
+ * 訂閱 artifact store 的 alerts 區塊 — 當用戶於 OrderArtifact 修正欄位後,
+ * 對應的錯誤 / 提醒會即時消失;訂單全部 commit 後 alerts 整塊隱藏。
+ */
+function LiveOrderAlerts({ artifactId }: { artifactId: string }) {
+  const store = useArtifactStore();
+  const data = store.get<CreateOrderArtifactData>(artifactId);
+  if (!data || data.mode !== 'orders') return null;
+  const { errors, reminders } = deriveAlerts(data.orders);
+  if (errors.length === 0 && reminders.length === 0) return null;
+  return (
+    <>
+      {errors.length > 0 && <AlertBox type="error" items={errors} />}
+      {reminders.length > 0 && <AlertBox type="reminder" items={reminders} />}
+    </>
+  );
+}
+
+function buildOrdersSummary(orders: OrderDraft[], artifactId: string): ReactNode {
+  const { errors, reminders } = deriveAlerts(orders);
+  const hasIssue = errors.length > 0 || reminders.length > 0;
+  const intro = hasIssue
+    ? `已為您整理出 ${orders.length} 張訂單，請協助確認以下資訊，您可以直接編輯欄位或告訴我要更改的內容，修正完畢後請點擊「新增」送出`
+    : buildConfirmSummary(orders.length);
+  return (
+    <>
+      <Box>{intro}</Box>
+      <LiveOrderAlerts artifactId={artifactId} />
+    </>
+  );
 }
 
 export const createOrderSkill: RenieSkill = {
@@ -172,10 +266,11 @@ export const createOrderSkill: RenieSkill = {
       const blocks = parseTemplateInput(input);
       if (blocks.length > 0) {
         const orders = ordersFromTemplateBlocks(blocks);
+        const artifactId = generateArtifactId();
         return {
-          summary: buildOrdersSummary(orders),
+          summary: buildOrdersSummary(orders, artifactId),
           artifact: {
-            artifactId: generateArtifactId(),
+            artifactId,
             data: { mode: 'orders', orders } satisfies CreateOrderArtifactData,
           },
         };
@@ -186,10 +281,11 @@ export const createOrderSkill: RenieSkill = {
     // 2. 多筆格式 → 直接展卡(可能含 missingFields)
     if (isMultiOrderInput(input)) {
       const orders = parseMultiOrderInput(input);
+      const artifactId = generateArtifactId();
       return {
-        summary: buildOrdersSummary(orders),
+        summary: buildOrdersSummary(orders, artifactId),
         artifact: {
-          artifactId: generateArtifactId(),
+          artifactId,
           data: { mode: 'orders', orders } satisfies CreateOrderArtifactData,
         },
       };
@@ -210,13 +306,16 @@ export const createOrderSkill: RenieSkill = {
       };
     }
 
-    // 進 gathering:純文字 + 格式範本
-    const template = buildFormatTemplate(
-      ['businessType', 'customerName', 'recipientAddress'],
-      { includeOrderNo: true },
-    );
+    // 進 gathering:純文字回覆,提供範本格式給 OP 參考
     return {
-      summary: `建立訂單至少需要以下資訊,您可參考下方的格式回覆,或直接補充/貼上您所需的訂單資料\n\n${template}`,
+      summary: `新增訂單至少需要以下資訊,你可以直接貼上手邊的資料,或參考下方的格式回覆:
+
+- 訂單編號:(若沒有提供則會自動編碼)
+- 業務類型:(送 / 取 / 取送,若沒有提供則預設為「送」)
+- 客戶:
+- 收件人地址:
+
+此外,你也可補充貨品、費用、寄件人/收件人、日期等資訊。`,
       artifact: {
         artifactId: generateArtifactId(),
         data: { mode: 'gathering', collected: extracted },
@@ -228,10 +327,10 @@ export const createOrderSkill: RenieSkill = {
     const d = data as CreateOrderArtifactData | undefined;
     if (!d) return false;
     if (d.mode === 'gathering') return !isAllCollected(d.collected);
-    // orders mode: 有任何未 commit 的訂單還缺必填 → active(對話可補)
-    return d.orders.some(
-      (o) => !o.committed && (o.missingFields?.length ?? 0) > 0,
-    );
+    // orders mode: 只要還有未 commit 的訂單 → 對話持續可用
+    //   - 缺欄位 / 歧義 → 補資料
+    //   - 完整訂單  → 批量修改(例如「全部改成明天 14:00 前送達」)
+    return d.orders.some((o) => !o.committed);
   },
 
   shouldRenderArtifact(data) {
@@ -245,8 +344,9 @@ export const createOrderSkill: RenieSkill = {
       ctx.setStatus?.(text);
       await new Promise((r) => setTimeout(r, ms));
     };
-    await step('解讀指令內容', 280);
-    await step('整理回覆', 240);
+    await step('解讀指令內容', 900);
+    await step('比對訂單資料', 1100);
+    await step('整理回覆', 1000);
     const data = store.get<CreateOrderArtifactData>(artifactId);
     if (!data) {
       return { summary: '找不到對應的訂單,請重新開始' };
@@ -299,19 +399,65 @@ export const createOrderSkill: RenieSkill = {
       };
     }
 
-    // ── Orders mode + 有缺漏: 對話補欄位(混合派 B) ───────
+    // ── Orders mode: 共用的 pending 寫入 + 確認卡 ──────────
+    // 所有透過對話下達的異動指令(批量 / 個別欄位修正)都先暫存到 pendingBatchUpdate
+    // 而非直接寫入訂單,讓用戶在 chat 端點「套用 / 不套用」決定。
+    const stagePending = (
+      targets: Array<{ orderIndex: number; field: FieldKey; value: string }>,
+      summaryHead: ReactNode,
+    ) => {
+      const batchId = `batch-${Date.now()}`;
+      const pending: PendingBatchUpdate = {
+        batchId,
+        targets,
+      };
+      store.update<CreateOrderArtifactData>(artifactId, (prev) => {
+        if (prev.mode !== 'orders') return prev;
+        return { ...prev, pendingBatchUpdate: pending };
+      });
+      return {
+        summary: (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box>{summaryHead}</Box>
+            <BatchUpdateConfirmCard batchId={batchId} />
+          </Box>
+        ),
+      };
+    };
+
+    // (A) 批量修改:「全部改成明天 14:00 前送達」/「全部訂單的客戶改成客戶B」
+    const batchUpdate = extractBatchUpdate(input, new Date());
+    if (batchUpdate) {
+      const pendingIndices = data.orders
+        .map((o, idx) => (!o.committed ? idx : -1))
+        .filter((i) => i >= 0);
+      if (pendingIndices.length === 0) {
+        return { summary: '目前沒有可修改的訂單' };
+      }
+      const targets = pendingIndices.flatMap((orderIndex) =>
+        batchUpdate.targets.map((t) => ({
+          orderIndex,
+          field: t.field,
+          value: t.value,
+        })),
+      );
+      return stagePending(
+        targets,
+        `已把所有訂單的${batchUpdate.phrase},若確認無誤請點擊「套用」,如果需要調整請直接編輯欄位或告訴我要更改的內容`,
+      );
+    }
+
+    // (B) 個別欄位修正:「2 號客戶大同公司」/「客戶B」(套用到所有缺該欄的訂單)
     const orders = data.orders;
     const extracted = extractFields(input);
     const refs = extractOrderRefs(input);
 
-    // 哪幾張未 commit
     const pendingIndices = orders
       .map((o, idx) => (!o.committed ? idx : -1))
       .filter((i) => i >= 0);
 
-    // 對每個 extracted 欄位,決定要套用到哪幾張
     const applyTargets: Array<{
-      orderIdx: number;
+      orderIndex: number;
       field: FieldKey;
       value: string;
     }> = [];
@@ -323,14 +469,17 @@ export const createOrderSkill: RenieSkill = {
         for (const ref of refs) {
           const idx = ref - 1;
           if (pendingIndices.includes(idx)) {
-            applyTargets.push({ orderIdx: idx, field: k, value });
+            applyTargets.push({ orderIndex: idx, field: k, value });
           }
         }
       } else {
-        // 沒指定 → 套用到「所有缺這個欄位」的卡片
+        // 沒指定 → 套用到「所有缺這個欄位 / 該欄歧義」的卡片
         pendingIndices.forEach((idx) => {
-          if (orders[idx].missingFields?.includes(k)) {
-            applyTargets.push({ orderIdx: idx, field: k, value });
+          const o = orders[idx];
+          const isMissing = o.missingFields?.includes(k) ?? false;
+          const isAmbiguous = !!o.ambiguousFields?.[k];
+          if (isMissing || isAmbiguous) {
+            applyTargets.push({ orderIndex: idx, field: k, value });
           }
         });
       }
@@ -343,39 +492,26 @@ export const createOrderSkill: RenieSkill = {
       };
     }
 
-    // 套用
-    store.update<CreateOrderArtifactData>(artifactId, (prev) => {
-      if (prev.mode !== 'orders') return prev;
-      return {
-        mode: 'orders',
-        orders: prev.orders.map((o, idx) => {
-          const applies = applyTargets.filter((t) => t.orderIdx === idx);
-          if (applies.length === 0) return o;
-          const newFields = { ...o.fields };
-          let newMissing = o.missingFields ?? [];
-          for (const { field, value } of applies) {
-            newFields[field] = value;
-            newMissing = newMissing.filter((f) => f !== field);
-          }
-          return { ...o, fields: newFields, missingFields: newMissing };
-        }),
-      };
-    });
-
-    // 訊息:按訂單分組
-    const byOrder = new Map<number, FieldKey[]>();
+    // 訊息:具體說明要改哪些欄位、改成什麼值(每張卡分組)
+    type ApplyTarget = (typeof applyTargets)[number];
+    const byOrder = new Map<number, ApplyTarget[]>();
     applyTargets.forEach((t) => {
-      const arr = byOrder.get(t.orderIdx) ?? [];
-      arr.push(t.field);
-      byOrder.set(t.orderIdx, arr);
+      const arr = byOrder.get(t.orderIndex) ?? [];
+      arr.push(t);
+      byOrder.set(t.orderIndex, arr);
     });
     const parts: string[] = [];
     Array.from(byOrder.entries())
       .sort(([a], [b]) => a - b)
-      .forEach(([idx, fields]) => {
-        parts.push(`#${idx + 1} 已補上${listLabels(fields)}`);
+      .forEach(([idx, targets]) => {
+        const fragments = targets.map(
+          (t) => `「${FIELD_META[t.field].label}」改為「${t.value}」`,
+        );
+        parts.push(`#${idx + 1} 的${fragments.join('、')}`);
       });
-    return { summary: `好的,${parts.join('、')}` };
+    const summaryHead = `已準備將 ${parts.join(';')},若確認無誤請點擊「套用」`;
+
+    return stagePending(applyTargets, summaryHead);
   },
 
   ArtifactRenderer: OrderArtifact,

@@ -1,30 +1,18 @@
-import {
-  Box,
-  Link,
-  Tooltip,
-  Typography,
-  useTheme,
-} from '@mui/material';
-import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
-import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import { Box, Link, Tooltip, Typography, useTheme } from '@mui/material';
 import ArrowOutwardRoundedIcon from '@mui/icons-material/ArrowOutwardRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
-import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
 import type { ArtifactRendererProps } from '../types';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import ArtifactPill from '../../components/ArtifactPill';
 
-export type SummaryArtifactData = {
-  total: number;
-  delivered: number;
-  inTransit: number;
-  pending: number;
-  exception: number;
+export type DriverLoadData = {
+  totalOrders: number;
+  weekRange: string;
+  items: Array<{ driver: string; count: number }>;
 };
 
-export default function SummaryArtifact({
+export default function DriverLoadArtifact({
   artifactId,
   store,
   displayMode = 'inline',
@@ -35,52 +23,22 @@ export default function SummaryArtifact({
   onExitSideMode,
 }: ArtifactRendererProps) {
   const theme = useTheme();
-  const data = store.get<SummaryArtifactData>(artifactId);
+  const data = store.get<DriverLoadData>(artifactId);
   if (!data) return null;
   const isPanel = displayMode === 'panel';
 
-  // Inline + 並排模式 → pill
   if (displayMode === 'inline' && isPinned) {
     return (
       <ArtifactPill
-        icon={InsightsOutlinedIcon}
-        label="今日訂單執行狀況"
+        icon={LocalShippingOutlinedIcon}
+        label="本週司機派車量"
         isActive={isActive}
         onClick={onTogglePin}
       />
     );
   }
 
-  const stats = [
-    {
-      label: '已送達',
-      value: data.delivered,
-      Icon: TaskAltIcon,
-      color: theme.palette.dasGreen.dark03,
-      bg: theme.palette.dasGreen.lite01,
-    },
-    {
-      label: '配送中',
-      value: data.inTransit,
-      Icon: LocalShippingOutlinedIcon,
-      color: theme.palette.dasPrimary.dark01,
-      bg: theme.palette.dasPrimary.lite03,
-    },
-    {
-      label: '待派車',
-      value: data.pending,
-      Icon: HourglassBottomIcon,
-      color: theme.palette.dasDark.dark03,
-      bg: theme.palette.dasGrey.grey05,
-    },
-    {
-      label: '異常',
-      value: data.exception,
-      Icon: WarningAmberIcon,
-      color: theme.palette.dasOrange.dark01,
-      bg: theme.palette.dasOrange.lite01,
-    },
-  ];
+  const maxCount = Math.max(...data.items.map((i) => i.count));
 
   return (
     <Box
@@ -113,16 +71,15 @@ export default function SummaryArtifact({
             variant="h5Bold"
             sx={{ color: theme.palette.dasDark.dark01 }}
           >
-            今日訂單執行狀況
+            本週司機派車量
           </Typography>
           <Typography
             variant="body2"
             sx={{ color: theme.palette.dasGrey.grey01 }}
           >
-            共 {data.total} 張
+            {data.weekRange} · 共 {data.totalOrders} 張
           </Typography>
         </Box>
-
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {!isPanel && onTogglePin && (
             <Link
@@ -175,45 +132,45 @@ export default function SummaryArtifact({
           overflow: isPanel ? 'auto' : undefined,
         }}
       >
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 1.5,
-          }}
-        >
-          {stats.map((s) => (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          {data.items.map((it) => (
             <Box
-              key={s.label}
-              sx={{
-                p: 1.5,
-                borderRadius: 2,
-                bgcolor: s.bg,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 0.5,
-              }}
+              key={it.driver}
+              sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <s.Icon sx={{ fontSize: 16, color: s.color }} />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography
-                  variant="caption"
-                  sx={{ color: s.color, fontWeight: 600 }}
+                  variant="body1"
+                  sx={{
+                    color: theme.palette.dasDark.dark01,
+                    fontWeight: 500,
+                  }}
                 >
-                  {s.label}
+                  {it.driver}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ color: theme.palette.dasDark.dark03 }}
+                >
+                  {it.count} 張
                 </Typography>
               </Box>
-              <Typography
-                variant="h3"
+              <Box
                 sx={{
-                  color: s.color,
-                  fontWeight: 600,
-                  lineHeight: 1.1,
-                  fontSize: 28,
+                  height: 8,
+                  bgcolor: theme.palette.dasGrey.grey05,
+                  borderRadius: '999px',
+                  overflow: 'hidden',
                 }}
               >
-                {s.value}
-              </Typography>
+                <Box
+                  sx={{
+                    width: `${(it.count / maxCount) * 100}%`,
+                    height: '100%',
+                    background: `linear-gradient(90deg, ${theme.palette.dasPrimary.lite01}, ${theme.palette.dasPrimary.primary})`,
+                  }}
+                />
+              </Box>
             </Box>
           ))}
         </Box>

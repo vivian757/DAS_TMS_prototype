@@ -3,11 +3,13 @@ import {
   Box,
   IconButton,
   InputBase,
+  Tooltip,
   Typography,
   useTheme,
   Divider,
 } from '@mui/material';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import CleaningServicesOutlinedIcon from '@mui/icons-material/CleaningServicesOutlined';
 import SendIcon from '@mui/icons-material/Send';
 import CommandPalette from './CommandPalette';
 
@@ -21,14 +23,17 @@ type Props = {
     promptText: string,
     autoSend: boolean,
   ) => void;
+  /** 清除對話 — 有提供時會在「指令」按鈕旁顯示清除 icon */
+  onClear?: () => void;
   placeholder?: string;
-};
+}
 
 export default function InputBar({
   draft,
   onChangeDraft,
   onSend,
   onPickCommand,
+  onClear,
   placeholder = '請輸入指令...',
 }: Props) {
   const theme = useTheme();
@@ -110,29 +115,45 @@ export default function InputBar({
             py: 0.75,
           }}
         >
-          <Box
-            ref={paletteButtonRef}
-            role="button"
-            onClick={() => setPaletteOpen(true)}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              px: 1,
-              py: 0.5,
-              borderRadius: 1,
-              cursor: 'pointer',
-              color: paletteOpen
-                ? theme.palette.dasPrimary.primary
-                : theme.palette.dasDark.dark03,
-              bgcolor: paletteOpen
-                ? theme.palette.dasPrimary.lite03
-                : 'transparent',
-              '&:hover': { bgcolor: theme.palette.dasGrey.grey05 },
-            }}
-          >
-            <AutoAwesomeOutlinedIcon sx={{ fontSize: 18 }} />
-            <Typography variant="body2">指令</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Box
+              ref={paletteButtonRef}
+              role="button"
+              onClick={() => setPaletteOpen(true)}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                cursor: 'pointer',
+                color: paletteOpen
+                  ? theme.palette.dasPrimary.primary
+                  : theme.palette.dasDark.dark03,
+                bgcolor: paletteOpen
+                  ? theme.palette.dasPrimary.lite03
+                  : 'transparent',
+                '&:hover': { bgcolor: theme.palette.dasGrey.grey05 },
+              }}
+            >
+              <AutoAwesomeOutlinedIcon sx={{ fontSize: 18 }} />
+              <Typography variant="body2">指令</Typography>
+            </Box>
+            {onClear && (
+              <Tooltip title="清除對話" placement="top">
+                <IconButton
+                  size="small"
+                  onClick={onClear}
+                  sx={{
+                    color: theme.palette.dasDark.dark03,
+                    '&:hover': { bgcolor: theme.palette.dasGrey.grey05 },
+                  }}
+                >
+                  <CleaningServicesOutlinedIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
 
           <IconButton
@@ -150,18 +171,6 @@ export default function InputBar({
           </IconButton>
         </Box>
       </Box>
-
-      <Typography
-        variant="caption"
-        sx={{
-          display: 'block',
-          textAlign: 'center',
-          color: theme.palette.dasGrey.grey01,
-          mt: 1.25,
-        }}
-      >
-        ⓘ 本服務產出的內容均由 AI 生成,目前提供訂單建立、檢索與分析。
-      </Typography>
 
       <CommandPalette
         anchorEl={paletteButtonRef.current}

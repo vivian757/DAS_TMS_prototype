@@ -1,15 +1,22 @@
-import { Box, Typography, useTheme, Link } from '@mui/material';
+import { useEffect, useRef, useState } from 'react';
+import { Box, Tooltip, Typography, useTheme, Link } from '@mui/material';
+import type { Theme } from '@mui/material/styles';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import type { FieldKey, OrderDraft } from './types';
 import { FIELD_META, FIELD_ORDER } from './fieldMeta';
 import InlineField from './InlineField';
 import InlineText from './InlineText';
+import AmbiguousField from './AmbiguousField';
 
 type Props = {
   order: OrderDraft;
   index: number;
   onUpdateOrderNo: (orderNo: string) => void;
   onUpdateField: (key: FieldKey, value: string) => void;
+  onResolveAmbiguity?: (key: FieldKey, chosen: string | null) => void;
+  onRemove?: () => void;
 };
 
 export default function OrderCard({
@@ -17,17 +24,34 @@ export default function OrderCard({
   index,
   onUpdateOrderNo,
   onUpdateField,
+  onResolveAmbiguity,
+  onRemove,
 }: Props) {
   const theme = useTheme();
   const committed = !!order.committed;
   const missingSet = new Set<FieldKey>(order.missingFields ?? []);
+  const ambiguous = order.ambiguousFields ?? {};
+  const correctedSet = new Set<FieldKey>(order.recentlyCorrected?.fields ?? []);
+
+  // Flash 動畫:recentlyCorrected.at 變動時短暫高亮卡片邊框
+  const [flashing, setFlashing] = useState(false);
+  const lastAtRef = useRef<number | undefined>(order.recentlyCorrected?.at);
+  useEffect(() => {
+    const at = order.recentlyCorrected?.at;
+    if (at && at !== lastAtRef.current) {
+      lastAtRef.current = at;
+      setFlashing(true);
+      const t = setTimeout(() => setFlashing(false), 1800);
+      return () => clearTimeout(t);
+    }
+  }, [order.recentlyCorrected?.at]);
 
   /**
-   * Display fields = 解析到的欄位 ∪ Renie 認為應該補的欄位(missingFields)
-   * 依 FIELD_ORDER 排序,fullWidth 欄位獨佔一行、其他兩兩配對。
+   * Display fields = 解析到的欄位 ∪ Renie 認為應該補的欄位 ∪ 含歧義的欄位
+   * 依 FIELD_ORDER 排序,fullWidth 欄位或歧義中欄位獨佔一行、其他兩兩配對。
    */
   const presentFields = FIELD_ORDER.filter(
-    (k) => k in order.fields || missingSet.has(k),
+    (k) => k in order.fields || missingSet.has(k) || k in ambiguous,
   );
   type Row =
     | { kind: 'full'; key: FieldKey }
@@ -36,7 +60,9 @@ export default function OrderCard({
   let pending: FieldKey | null = null;
   for (const k of presentFields) {
     const meta = FIELD_META[k];
-    if (meta.fullWidth) {
+    // 歧義中欄位需要 chip group + 逃生口,佔一整行避免被擠
+    const forceFull = meta.fullWidth || k in ambiguous;
+    if (forceFull) {
       if (pending) {
         rows.push({ kind: 'pair', left: pending });
         pending = null;
@@ -55,12 +81,15 @@ export default function OrderCard({
     <Box
       sx={{
         bgcolor: '#FFFFFF',
-        border: `1px solid ${theme.palette.dasGrey.grey04}`,
+        border: `1px solid ${flashing ? theme.palette.dasPrimary.primary : theme.palette.dasGrey.grey04}`,
+        boxShadow: flashing
+          ? `0 0 0 3px ${theme.palette.dasPrimary.lite03}`
+          : 'none',
         borderRadius: 2.5,
         opacity: committed ? 0.6 : 1,
         px: 2.5,
         py: 2,
-        transition: 'all 0.2s ease',
+        transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
       }}
     >
       <Box
@@ -113,6 +142,32 @@ export default function OrderCard({
             inputWidth={140}
           />
         )}
+        <Box sx={{ flex: 1 }} />
+        {!committed && onRemove && (
+          <Tooltip title="移除此筆訂單" arrow>
+            <Box
+              role="button"
+              onClick={onRemove}
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                cursor: 'pointer',
+                color: theme.palette.dasGrey.grey02,
+                transition: 'all 0.15s ease',
+                '&:hover': {
+                  bgcolor: theme.palette.dasRed.lite01,
+                  color: theme.palette.dasRed.dark01,
+                },
+              }}
+            >
+              <CloseRoundedIcon sx={{ fontSize: 18 }} />
+            </Box>
+          </Tooltip>
+        )}
       </Box>
 
       <Box
@@ -126,13 +181,17 @@ export default function OrderCard({
         {rows.map((row, ri) => {
           if (row.kind === 'full') {
             return (
-              <InlineField
+              <FieldRow
                 key={ri}
-                label={FIELD_META[row.key].label}
-                value={order.fields[row.key] ?? ''}
-                disabled={committed}
-                missing={missingSet.has(row.key)}
-                onChange={(v) => onUpdateField(row.key, v)}
+                fieldKey={row.key}
+                order={order}
+                committed={committed}
+                missingSet={missingSet}
+                ambiguous={ambiguous}
+                correctedSet={correctedSet}
+                onUpdateField={onUpdateField}
+                onResolveAmbiguity={onResolveAmbiguity}
+                theme={theme}
               />
             );
           }
@@ -146,26 +205,99 @@ export default function OrderCard({
                 columnGap: 4,
               }}
             >
-              <InlineField
-                label={FIELD_META[left].label}
-                value={order.fields[left] ?? ''}
-                disabled={committed}
-                missing={missingSet.has(left)}
-                onChange={(v) => onUpdateField(left, v)}
+              <FieldRow
+                fieldKey={left}
+                order={order}
+                committed={committed}
+                missingSet={missingSet}
+                ambiguous={ambiguous}
+                correctedSet={correctedSet}
+                onUpdateField={onUpdateField}
+                onResolveAmbiguity={onResolveAmbiguity}
+                theme={theme}
               />
               {right && (
-                <InlineField
-                  label={FIELD_META[right].label}
-                  value={order.fields[right] ?? ''}
-                  disabled={committed}
-                  missing={missingSet.has(right)}
-                  onChange={(v) => onUpdateField(right, v)}
+                <FieldRow
+                  fieldKey={right}
+                  order={order}
+                  committed={committed}
+                  missingSet={missingSet}
+                  ambiguous={ambiguous}
+                  correctedSet={correctedSet}
+                  onUpdateField={onUpdateField}
+                  onResolveAmbiguity={onResolveAmbiguity}
+                  theme={theme}
                 />
               )}
             </Box>
           );
         })}
       </Box>
+    </Box>
+  );
+}
+
+type FieldRowProps = {
+  fieldKey: FieldKey;
+  order: OrderDraft;
+  committed: boolean;
+  missingSet: Set<FieldKey>;
+  ambiguous: Partial<Record<FieldKey, string[]>>;
+  correctedSet: Set<FieldKey>;
+  onUpdateField: (key: FieldKey, value: string) => void;
+  onResolveAmbiguity?: (key: FieldKey, chosen: string | null) => void;
+  theme: Theme;
+};
+
+/** 渲染單一欄位:歧義 → chip group;一般 → InlineField。修正過的欄位旁加 ✨ 標記。 */
+function FieldRow({
+  fieldKey,
+  order,
+  committed,
+  missingSet,
+  ambiguous,
+  correctedSet,
+  onUpdateField,
+  onResolveAmbiguity,
+  theme,
+}: FieldRowProps) {
+  const isAmbiguous = !committed && fieldKey in ambiguous;
+  const candidates = ambiguous[fieldKey] ?? [];
+  const wasCorrected = correctedSet.has(fieldKey);
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, flex: 1 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {isAmbiguous ? (
+          <AmbiguousField
+            label={FIELD_META[fieldKey].label}
+            currentValue={order.fields[fieldKey] ?? ''}
+            candidates={candidates}
+            onPick={(chosen) => onResolveAmbiguity?.(fieldKey, chosen)}
+            onEscape={() => onResolveAmbiguity?.(fieldKey, null)}
+          />
+        ) : (
+          <InlineField
+            label={FIELD_META[fieldKey].label}
+            value={order.fields[fieldKey] ?? ''}
+            disabled={committed}
+            missing={missingSet.has(fieldKey)}
+            onChange={(v) => onUpdateField(fieldKey, v)}
+          />
+        )}
+      </Box>
+      {wasCorrected && (
+        <Tooltip title="此欄位剛由對話修正" arrow>
+          <AutoAwesomeRoundedIcon
+            sx={{
+              fontSize: 14,
+              color: theme.palette.dasPrimary.primary,
+              mt: '6px',
+              flexShrink: 0,
+            }}
+          />
+        </Tooltip>
+      )}
     </Box>
   );
 }

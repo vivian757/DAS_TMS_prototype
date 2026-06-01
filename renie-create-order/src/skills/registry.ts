@@ -4,6 +4,7 @@ import { createDispatchSkill } from './createDispatch';
 import { createCustomerSkill } from './createCustomer';
 import { querySummarySkill } from './querySummary';
 import { analyzeCustomerSkill } from './analyzeCustomer';
+import { analyzeDriverSkill } from './analyzeDriver';
 
 /**
  * Renie.ai skill registry.
@@ -15,6 +16,7 @@ export const SKILLS: RenieSkill[] = [
   createCustomerSkill,
   querySummarySkill,
   analyzeCustomerSkill,
+  analyzeDriverSkill,
 ];
 
 /** Category 中文 label */

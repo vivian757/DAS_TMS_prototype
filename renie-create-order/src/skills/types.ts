@@ -19,8 +19,8 @@ export type SkillRunContext = {
 };
 
 export type SkillExecutionResult = {
-  /** Renie 對話泡會顯示的摘要文字 */
-  summary: string;
+  /** Renie 對話泡會顯示的摘要 — 可純文字或結構化 ReactNode(例如分類錯誤/提醒區塊) */
+  summary: ReactNode;
   /** Skill 產出的 artifact(如訂單卡片、統計卡、表格) */
   artifact?: {
     artifactId: string;
@@ -39,6 +39,32 @@ export type ArtifactRendererProps = {
   store: ArtifactStore;
   /** Skill 內部完成某個操作後想新增一則 Renie 訊息(例如部分 commit 完成的後續通知) */
   onFollowUp?: (text: ReactNode) => void;
+  /** 渲染位置:inline 在對話流內、panel 在右側並排面板。預設 'inline'。 */
+  displayMode?: 'inline' | 'panel';
+  /**
+   * 並排檢視模式是否已開啟。為 true 時,所有 inline artifact 應該渲染為 pill。
+   * (原本「此 artifact 已被釘選」的單一語意已換成全域 mode)
+   */
+  isPinned?: boolean;
+  /**
+   * 在並排模式下,此 artifact 是否為「目前在右側面板顯示中」的那個。
+   * Pill 渲染時用來區分 active(預覽中,primary 邊框)vs inactive(可切換)。
+   */
+  isActive?: boolean;
+  /**
+   * Pill 點擊行為:
+   * - 未進入並排模式時 → 開啟並排模式,並把這個 artifact 設為 active
+   * - 已在並排模式且 isActive=false → 切換 panel 顯示為此 artifact
+   * - 已在並排模式且 isActive=true → 不做任何事(由 panel 的 ✕ 統一退出)
+   */
+  onTogglePin?: () => void;
+  /** Panel 的 ✕ 按鈕:退出並排模式回到單欄 */
+  onExitSideMode?: () => void;
+  /**
+   * AI 正在處理中(例如批改 / continueSession running)。
+   * Renderer 可以據此顯示 loading 覆蓋層。由 App.tsx 從 isThinking 傳入。
+   */
+  isLoading?: boolean;
 };
 
 export type RenieSkill = {
@@ -78,7 +104,7 @@ export type RenieSkill = {
     artifactId: string,
     store: ArtifactStore,
     ctx: SkillRunContext,
-  ) => Promise<{ summary: string; promotedArtifact?: SkillExecutionResult['artifact'] }>;
+  ) => Promise<{ summary: ReactNode; promotedArtifact?: SkillExecutionResult['artifact'] }>;
 
   /** Artifact 渲染元件 — 若 skill 會產出 artifact,必須提供 */
   ArtifactRenderer?: ComponentType<ArtifactRendererProps>;
