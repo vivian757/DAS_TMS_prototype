@@ -40,12 +40,14 @@ export default function AlertBox({ type, items }: Props) {
         bg: theme.palette.dasRed.lite01,
         border: 'transparent',
         title: theme.palette.dasRed.dark01,
+        body: theme.palette.dasRed.dark01,
         rowLink: theme.palette.dasRed.dark01,
       }
     : {
         bg: '#EAF9FF',
         border: theme.palette.dasPrimary.lite02,
         title: theme.palette.dasPrimary.dark01,
+        body: theme.palette.dasPrimary.primary,
         rowLink: theme.palette.dasPrimary.primary,
       };
 
@@ -78,11 +80,11 @@ export default function AlertBox({ type, items }: Props) {
             mb: 0.5,
           }}
         >
-          {isError ? '待修正' : '提醒'}
+          {isError ? '錯誤' : '提醒'}
         </Box>
         <Box
           sx={{
-            color: theme.palette.dasDark.dark01,
+            color: colors.body,
             fontSize: 13,
             lineHeight: '22px',
             display: 'flex',
@@ -91,45 +93,51 @@ export default function AlertBox({ type, items }: Props) {
           }}
         >
           {items.map((it, i) => {
-            const rowLabel =
-              it.rows && it.rows.length > 0 ? (
-                <Box component="span" sx={{ fontWeight: 500, flexShrink: 0 }}>
-                  第{' '}
-                  {it.rows.map((r, ri) => (
-                    <Box key={ri} component="span">
-                      <Box
-                        component="span"
-                        role="button"
-                        onClick={() => highlightRow(r)}
-                        sx={{
-                          color: colors.rowLink,
-                          textDecoration: 'underline',
-                          textUnderlineOffset: 2,
-                          fontWeight: 500,
-                          mx: 0.25,
-                          cursor: 'pointer',
-                          '&:hover': { opacity: 0.7 },
-                        }}
-                      >
-                        {r}
-                      </Box>
-                      {ri < it.rows!.length - 1 && (
-                        <Box component="span">,</Box>
-                      )}
+            const hasRows = it.rows && it.rows.length > 0;
+            const rowLabel = hasRows ? (
+              <Box component="span" sx={{ fontWeight: 500, flexShrink: 0 }}>
+                第{' '}
+                {it.rows!.map((r, ri) => (
+                  <Box key={ri} component="span">
+                    <Box
+                      component="span"
+                      className="alert-row-link"
+                      sx={{
+                        color: colors.rowLink,
+                        fontWeight: 500,
+                        mx: 0.25,
+                      }}
+                    >
+                      {r}
                     </Box>
-                  ))}{' '}
-                  列:
-                </Box>
-              ) : null;
+                    {ri < it.rows!.length - 1 && (
+                      <Box component="span">,</Box>
+                    )}
+                  </Box>
+                ))}{' '}
+                列:
+              </Box>
+            ) : null;
 
             return (
               <Box
                 key={i}
+                onClick={
+                  hasRows ? () => highlightRow(it.rows![0]) : undefined
+                }
                 sx={{
                   display: 'grid',
                   gridTemplateColumns: rowLabel ? 'auto 1fr' : '1fr',
                   columnGap: 0.5,
                   alignItems: 'baseline',
+                  cursor: hasRows ? 'pointer' : 'default',
+                  ...(hasRows && {
+                    '&:hover': {
+                      textDecoration: 'underline',
+                      textDecorationColor: 'currentColor',
+                      textUnderlineOffset: 2,
+                    },
+                  }),
                 }}
               >
                 {rowLabel}
