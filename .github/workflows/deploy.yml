@@ -51,6 +51,12 @@ jobs:
           mkdir -p _site/renie-create-order
           cp -r renie-create-order/dist/. _site/renie-create-order/
 
+          # order-status-lock 為本機預建的靜態檔，直接複製（無 build step）
+          if [ -d order-status-lock ]; then
+            mkdir -p _site/order-status-lock
+            cp -r order-status-lock/. _site/order-status-lock/
+          fi
+
           # Preserve existing root-level prototypes
           [ -f c-tooltip-style.html ] && cp c-tooltip-style.html _site/ || true
           [ -f order-management-drawer.html ] && cp order-management-drawer.html _site/ || true
