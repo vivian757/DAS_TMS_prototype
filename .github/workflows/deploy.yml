@@ -51,10 +51,16 @@ jobs:
           mkdir -p _site/renie-create-order
           cp -r renie-create-order/dist/. _site/renie-create-order/
 
-          # order-status-lock 為本機預建的靜態檔，直接複製（無 build step）
+          # order-status-lock 為本機預建靜態檔，直接複製（無 build step）
           if [ -d order-status-lock ]; then
             mkdir -p _site/order-status-lock
             cp -r order-status-lock/. _site/order-status-lock/
+          fi
+
+          # checklist-signoff 為本機預建靜態檔，直接複製（無 build step）
+          if [ -d checklist-signoff ]; then
+            mkdir -p _site/checklist-signoff
+            cp -r checklist-signoff/. _site/checklist-signoff/
           fi
 
           # Preserve existing root-level prototypes
