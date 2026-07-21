@@ -63,6 +63,12 @@ jobs:
             cp -r checklist-signoff/. _site/checklist-signoff/
           fi
 
+          # pricing-settings 為本機預建靜態檔，直接複製（無 build step）
+          if [ -d pricing-settings ]; then
+            mkdir -p _site/pricing-settings
+            cp -r pricing-settings/. _site/pricing-settings/
+          fi
+
           # Preserve existing root-level prototypes
           [ -f c-tooltip-style.html ] && cp c-tooltip-style.html _site/ || true
           [ -f order-management-drawer.html ] && cp order-management-drawer.html _site/ || true
