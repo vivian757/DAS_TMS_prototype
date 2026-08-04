@@ -69,12 +69,6 @@ jobs:
             cp -r pricing-settings/. _site/pricing-settings/
           fi
 
-          # qiaoli-transport-tabs 為本機預建靜態檔，直接複製（無 build step —— 它吃本機 codebase alias）
-          if [ -d qiaoli-transport-tabs ]; then
-            mkdir -p _site/qiaoli-transport-tabs
-            cp -r qiaoli-transport-tabs/. _site/qiaoli-transport-tabs/
-          fi
-
           # Preserve existing root-level prototypes
           [ -f c-tooltip-style.html ] && cp c-tooltip-style.html _site/ || true
           [ -f order-management-drawer.html ] && cp order-management-drawer.html _site/ || true
